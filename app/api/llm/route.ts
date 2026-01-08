@@ -4,6 +4,9 @@ import { getTools, executeTools } from '../../lib/tools';
 import type { ChatCompletionMessage } from 'openai/resources/chat';
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  console.log('\n[LLM API] ====== New Request ======');
+
   try {
     const { model = 'qwen2.5-coder:7b-instruct-q5_K_M', messages, stream = true }: {
       model?: string;
@@ -11,7 +14,10 @@ export async function POST(req: NextRequest) {
       stream?: boolean;
     } = await req.json();
 
+    console.log(`[LLM API] Model: ${model}, Stream: ${stream}, Messages: ${messages?.length || 0}`);
+
     if (!messages?.length) {
+      console.error('[LLM API] No messages provided');
       return NextResponse.json({ error: 'Messages required' }, { status: 400 });
     }
 
@@ -53,45 +59,103 @@ Plain text responses only. Be direct and helpful.`
     };
 
     const url = 'http://localhost:11434/v1/chat/completions';
-    let response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ollama'
-      },
-      body: JSON.stringify(body)
-    });
+
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ollama'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Ollama request timed out after 30s. Check if Ollama is running and responsive.');
+      }
+      throw new Error(`Failed to connect to Ollama: ${fetchError.message}`);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
-      throw new Error(`Ollama error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[LLM API] Ollama error ${response.status}:`, errorText);
+      throw new Error(`Ollama error: ${response.status} - ${errorText}`);
     }
+
+    console.log(`[LLM API] Initial request successful (${Date.now() - startTime}ms)`);
 
     // ✅ TOOL LOOPING (non-stream only for simplicity)
     if (!stream) {
       let data = await response.json();
       let allMessages = body.messages;
 
+      console.log(`[LLM API] Response has ${data.choices[0].message.tool_calls?.length || 0} tool calls`);
+
       // Loop until no more tool calls
+      let loopCount = 0;
+      const maxLoops = 5; // Prevent infinite loops
+
       while (data.choices[0].message.tool_calls?.length) {
+        loopCount++;
+        console.log(`[LLM API] Tool loop iteration ${loopCount}/${maxLoops}`);
+
+        if (loopCount > maxLoops) {
+          console.error('[LLM API] Max tool loop iterations reached');
+          throw new Error('Max tool loop iterations reached. Possible infinite loop.');
+        }
+
         const toolCalls = data.choices[0].message.tool_calls;
+        console.log(`[LLM API] Processing ${toolCalls.length} tool call(s):`, toolCalls.map((tc: any) => tc.function.name));
+
         allMessages.push(data.choices[0].message);
         allMessages = await executeTools(toolCalls, allMessages);
-        
-        // Re-call LLM with tool results
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
-          body: JSON.stringify({ model, messages: allMessages, stream: false })
-        });
-        
-        if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
+
+        // Re-call LLM with tool results - add timeout
+        const controller2 = new AbortController();
+        const timeoutId2 = setTimeout(() => controller2.abort(), 30000);
+
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
+            body: JSON.stringify({ model, messages: allMessages, stream: false }),
+            signal: controller2.signal
+          });
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId2);
+          if (fetchError.name === 'AbortError') {
+            throw new Error('Tool loop request timed out after 30s');
+          }
+          throw fetchError;
+        } finally {
+          clearTimeout(timeoutId2);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[LLM API] Tool loop Ollama error ${response.status}:`, errorText);
+          throw new Error(`Ollama error: ${response.status}`);
+        }
+
         data = await response.json();
+        console.log(`[LLM API] Tool loop response has ${data.choices[0].message.tool_calls?.length || 0} more tool calls`);
       }
 
+      console.log(`[LLM API] Tool execution complete after ${loopCount} iterations. Total time: ${Date.now() - startTime}ms`);
       return NextResponse.json(data.choices[0].message);
     }
 
     // Stream unchanged
+    console.log(`[LLM API] Returning stream response. Time: ${Date.now() - startTime}ms`);
     return new Response(response.body, {
       headers: {
         'Cache-Control': 'no-cache',
@@ -103,9 +167,15 @@ Plain text responses only. Be direct and helpful.`
     });
 
   } catch (error: any) {
-    console.error('LLM API Error:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Server error' 
+    const duration = Date.now() - startTime;
+    console.error(`[LLM API] ====== Error after ${duration}ms ======`);
+    console.error('[LLM API] Error details:', error);
+    console.error('[LLM API] Stack trace:', error.stack);
+
+    return NextResponse.json({
+      error: error.message || 'Server error',
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
     }, { status: 500 });
   }
 }

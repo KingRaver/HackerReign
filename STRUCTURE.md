@@ -9,7 +9,16 @@ hackerreign/
 ├── app/                          # Next.js App Router directory
 │   ├── api/                      # API routes
 │   │   └── llm/                  # LLM endpoint
-│   │       └── route.ts          # LLM API handler
+│   │       └── route.ts          # LLM API handler with tool support
+│   ├── lib/                      # Shared utilities and libraries
+│   │   └── tools/                # LLM tool integration
+│   │       ├── index.ts          # Tool exports and configuration
+│   │       ├── definitions.ts    # Tool JSON schemas
+│   │       ├── executor.ts       # Tool execution engine with handler mapping
+│   │       └── handlers/         # Individual tool implementations
+│   │           ├── weather.ts    # Weather tool (mock data)
+│   │           ├── calc.ts       # Calculator tool (mathjs)
+│   │           └── code-exec.ts  # Code execution tool (vm2 sandbox)
 │   ├── favicon.ico               # Site favicon
 │   ├── globals.css               # Global styles with Tailwind v4
 │   ├── layout.tsx                # Root layout component
@@ -46,7 +55,23 @@ hackerreign/
 Next.js 14+ App Router structure. Contains all pages, layouts, and API routes.
 
 ### `/app/api`
-Server-side API endpoints. Currently hosts the LLM integration.
+Server-side API endpoints. Currently hosts the LLM integration with tool support.
+
+### `/app/lib`
+Shared utilities and libraries used across the application.
+
+#### `/app/lib/tools`
+LLM tool integration system:
+- **index.ts** - Central export point for tool definitions
+- **definitions.ts** - JSON schemas for tool parameters (weather, calculator, code execution)
+- **executor.ts** - Tool execution engine with handler mapping and error handling
+- **handlers/** - Individual tool implementations with sandboxing and validation
+
+**Features:**
+- Tool handler name mapping (fixes dynamic import issues)
+- Comprehensive logging for debugging tool execution
+- Error handling with stack traces
+- Support for calculator (mathjs), weather (mock API), and code execution (vm2 sandbox)
 
 ### `/components`
 Reusable React components used across the application.
@@ -74,3 +99,13 @@ See `package.json` for available npm scripts:
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
 - `npm run type-check` - Check TypeScript types
+
+## Recent Updates
+
+### LLM API & Tool System Improvements
+- **Timeout Protection**: Added 30-second fetch timeouts with AbortController to prevent indefinite hanging
+- **Tool Handler Mapping**: Fixed dynamic import issues by mapping tool names to correct file names
+- **Enhanced Logging**: Comprehensive logging throughout request lifecycle with timestamps and stack traces
+- **Error Handling**: Better error messages with context, duration tracking, and debugging information
+- **Loop Protection**: Max 5 tool loop iterations to prevent infinite loops
+- **Dependencies**: Verified `mathjs` and `vm2` are properly installed and configured
