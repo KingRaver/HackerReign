@@ -44,7 +44,7 @@ Keep responses 1-3 sentences. Be direct and helpful.`
         },
         ...messages.slice(-10)
       ],
-      max_tokens: 2048,
+      max_tokens: 5555,
       temperature: 0.3,
       top_p: 0.85,
       stream,
@@ -54,7 +54,7 @@ Keep responses 1-3 sentences. Be direct and helpful.`
         num_ctx: 16384,  // Increased context window
         repeat_penalty: 1.2,
         num_batch: 512,  // Batch processing
-        num_predict: 2048  // Max prediction tokens
+        num_predict: 5555  // Max prediction tokens
       }
     };
 
