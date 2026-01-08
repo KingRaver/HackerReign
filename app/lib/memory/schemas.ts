@@ -98,11 +98,11 @@ export interface RetrievalResult {
  */
 export interface EmbeddingRequest {
   model: string;
-  prompt: string;
+  input: string | string[];  // Single string or array of strings for batch
 }
 
 export interface EmbeddingResponse {
-  embedding: number[];
+  embeddings: number[][];  // Ollama returns array of embeddings
   model?: string;
 }
 

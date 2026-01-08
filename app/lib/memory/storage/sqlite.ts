@@ -450,6 +450,93 @@ export class SQLiteStorage {
   }
 
   /**
+   * SESSION: Create or update a session
+   */
+  saveSession(session: Omit<Session, 'created_at' | 'last_activity'>): Session {
+    const id = session.id || this.generateId('sess');
+    const now = new Date().toISOString();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO sessions (id, user_id, created_at, last_activity, context_tokens_used)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        last_activity = excluded.last_activity,
+        context_tokens_used = excluded.context_tokens_used
+    `);
+
+    stmt.run(
+      id,
+      session.user_id,
+      now,
+      now,
+      session.context_tokens_used
+    );
+
+    return {
+      ...session,
+      id,
+      created_at: now,
+      last_activity: now,
+    };
+  }
+
+  /**
+   * SESSION: Get session by ID
+   */
+  getSession(sessionId: string): Session | null {
+    const stmt = this.db.prepare(`SELECT * FROM sessions WHERE id = ?`);
+    const row = stmt.get(sessionId) as any;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      created_at: row.created_at,
+      last_activity: row.last_activity,
+      context_tokens_used: row.context_tokens_used,
+    };
+  }
+
+  /**
+   * SESSION: Update session activity
+   */
+  updateSessionActivity(sessionId: string, contextTokensUsed?: number): void {
+    const now = new Date().toISOString();
+
+    if (contextTokensUsed !== undefined) {
+      const stmt = this.db.prepare(`
+        UPDATE sessions
+        SET last_activity = ?, context_tokens_used = context_tokens_used + ?
+        WHERE id = ?
+      `);
+      stmt.run(now, contextTokensUsed, sessionId);
+    } else {
+      const stmt = this.db.prepare(`
+        UPDATE sessions
+        SET last_activity = ?
+        WHERE id = ?
+      `);
+      stmt.run(now, sessionId);
+    }
+  }
+
+  /**
+   * SESSION: Delete old/inactive sessions
+   */
+  deleteInactiveSessions(daysInactive: number = 30): void {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysInactive);
+
+    const stmt = this.db.prepare(`
+      DELETE FROM sessions
+      WHERE last_activity < ?
+    `);
+
+    stmt.run(cutoffDate.toISOString());
+  }
+
+  /**
    * ANALYTICS: Log a search query
    */
   logSearchQuery(
@@ -460,7 +547,7 @@ export class SQLiteStorage {
   ): void {
     const id = this.generateId('search');
     const stmt = this.db.prepare(`
-      INSERT INTO search_queries 
+      INSERT INTO search_queries
       (id, query, retrieved_messages_count, top_similarity_score, created_at, response_time_ms)
       VALUES (?, ?, ?, ?, ?, ?)
     `);

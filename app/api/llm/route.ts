@@ -1,34 +1,43 @@
-// app/api/llm/route.ts - Full Tool Integration
 import { NextRequest, NextResponse } from 'next/server';
+import { getMemoryManager } from '../../lib/memory';
 import { getTools, executeTools } from '../../lib/tools';
-import type { ChatCompletionMessage } from 'openai/resources/chat';
+import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:11434/v1',
+  apiKey: 'ollama'
+});
+
+export const runtime = 'nodejs'; // Required for SQLite/Chroma
 
 export async function POST(req: NextRequest) {
-  const startTime = Date.now();
-  console.log('\n[LLM API] ====== New Request ======');
-
   try {
-    const { model = 'qwen2.5-coder:7b-instruct-q5_K_M', messages, stream = true, enableTools = false }: {
-      model?: string;
-      messages: ChatCompletionMessage[];
-      stream?: boolean;
-      enableTools?: boolean;
+    const {
+      model = 'qwen2.5-coder:7b-instruct-q5_K_M',
+      messages,
+      stream = true,
+      enableTools = false,
+      conversationId = null,
+      useMemory = true, // NEW: Enable memory augmentation
     } = await req.json();
 
-    console.log(`[LLM API] Model: ${model}, Stream: ${stream}, Messages: ${messages?.length || 0}`);
+    const memory = getMemoryManager();
 
-    if (!messages?.length) {
-      console.error('[LLM API] No messages provided');
-      return NextResponse.json({ error: 'Messages required' }, { status: 400 });
+    // Create conversation if needed
+    let currentConversationId = conversationId;
+    if (!currentConversationId) {
+      const conversation = memory.createConversation(
+        `Chat - ${new Date().toLocaleString()}`,
+        model
+      );
+      currentConversationId = conversation.id;
     }
 
-    // Tool support: Only add tools if explicitly enabled
-    const body: any = {
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: `You are Hacker Reign - a friendly coding expert. Respond in plain text only.
+    // ============================================================
+    // MEMORY AUGMENTATION: Retrieve past context (NEW)
+    // ============================================================
+    let systemPrompt = `You are Hacker Reign - a friendly coding expert. Respond in plain text only.
 
 CRITICAL RULES:
 - NO markdown syntax (no *, #, \`, [], etc)
@@ -40,131 +49,228 @@ CRITICAL RULES:
 For code: write it inline like this -> print("hello") or useState(0)
 For explanations: use natural sentences with commas and periods
 
-Keep responses 1-3 sentences. Be direct and helpful.`
+Keep responses 1-3 sentences. Be direct and helpful.`;
+
+    // Augment prompt with memory if enabled and this is a user message
+    const lastUserMessage = messages[messages.length - 1];
+    if (useMemory && lastUserMessage?.role === 'user') {
+      try {
+        const augmented = await memory.augmentWithMemory(lastUserMessage.content);
+
+        // Only include context if we found relevant memories
+        if (augmented.retrieved_context.length > 0) {
+          systemPrompt = augmented.enhanced_system_prompt;
+
+          // Log what was retrieved (for debugging)
+          console.log('[Memory] Retrieved context:');
+          console.log(memory.formatContextForLogging(augmented));
+        }
+      } catch (error) {
+        console.warn('[Memory] Error augmenting prompt:', error);
+        // Continue without memory augmentation
+      }
+    }
+
+    // ============================================================
+    // PREPARE MESSAGES FOR LLM
+    // ============================================================
+    const enhancedMessages: ChatCompletionMessageParam[] = [
+      {
+        role: 'system' as const,
+        content: systemPrompt,
+      },
+      ...messages.slice(-10), // Keep last 10 messages for context window
+    ];
+
+    // ============================================================
+    // SAVE USER MESSAGE TO MEMORY
+    // ============================================================
+    if (lastUserMessage?.role === 'user') {
+      try {
+        await memory.saveMessage(
+          currentConversationId,
+          'user',
+          lastUserMessage.content
+        );
+      } catch (error) {
+        console.warn('[Memory] Error saving user message:', error);
+      }
+    }
+
+    // ============================================================
+    // CALL LLM
+    // ============================================================
+
+    // For streaming: use fetch for manual control
+    if (stream) {
+      const body: any = {
+        model,
+        messages: enhancedMessages,
+        max_tokens: 5555,
+        temperature: 0.3,
+        top_p: 0.85,
+        stream: true,
+        options: {
+          num_thread: 12,
+          num_gpu: 99,
+          num_ctx: 16384,
+          repeat_penalty: 1.2,
+          num_batch: 512,
+          num_predict: 5555,
         },
-        ...messages.slice(-10)
-      ],
+      };
+
+      if (enableTools) {
+        const tools = getTools();
+        body.tools = tools;
+        body.tool_choice = 'auto';
+      }
+
+      const url = 'http://localhost:11434/v1/chat/completions';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Ollama error: ${response.status} - ${error}`);
+      }
+
+    // ============================================================
+    // HANDLE STREAMING RESPONSE
+    // ============================================================
+      // For streaming, collect the response and save to memory after
+      let fullContent = '';
+
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            try {
+              const reader = response.body?.getReader();
+              if (!reader) throw new Error('No response body');
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const text = new TextDecoder().decode(value);
+                const lines = text.split('\n');
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const json = JSON.parse(line.slice(6));
+                      const content = json.choices[0]?.delta?.content || '';
+                      if (content) {
+                        fullContent += content;
+                        controller.enqueue(new TextEncoder().encode(line + '\n'));
+                      }
+                    } catch {
+                      // Invalid JSON, skip
+                    }
+                  }
+                }
+              }
+
+              // ============================================================
+              // SAVE ASSISTANT RESPONSE TO MEMORY (after streaming)
+              // ============================================================
+              if (fullContent) {
+                try {
+                  await memory.saveMessage(
+                    currentConversationId,
+                    'assistant',
+                    fullContent,
+                    { model_used: model }
+                  );
+                } catch (error) {
+                  console.warn('[Memory] Error saving assistant message:', error);
+                }
+              }
+
+              controller.close();
+            } catch (error) {
+              console.error('[Stream] Error:', error);
+              controller.error(error);
+            }
+          },
+        }),
+        {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }
+      );
+    }
+
+    // ============================================================
+    // HANDLE NON-STREAMING RESPONSE (using OpenAI SDK)
+    // ============================================================
+    // Use OpenAI SDK for non-streaming with proper types
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: enhancedMessages,
       max_tokens: 5555,
       temperature: 0.3,
       top_p: 0.85,
-      stream,
-      options: {
-        num_thread: 12,  // Increased threads
-        num_gpu: 99,
-        num_ctx: 16384,  // Increased context window
-        repeat_penalty: 1.2,
-        num_batch: 512,  // Batch processing
-        num_predict: 5555  // Max prediction tokens
-      }
-    };
+      stream: false,
+      tools: enableTools ? getTools() : undefined,
+      tool_choice: enableTools ? 'auto' : undefined,
+    } as any); // Cast to any for Ollama-specific options compatibility
 
-    // Only add tools if requested (significantly improves performance)
+    let currentCompletion = completion;
+    let allMessages = enhancedMessages;
+
+    // Tool looping with OpenAI SDK
     if (enableTools) {
-      const tools = getTools();
-      body.tools = tools;
-      body.tool_choice = 'auto';
-      body.messages[0].content += '\n\nTOOLS: You have access to weather, calculator, and code execution tools. Use them when appropriate.';
-    }
-
-    const url = 'http://localhost:11434/v1/chat/completions';
-
-    let response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ollama'
-        },
-        body: JSON.stringify(body),
-        keepalive: true
-      });
-    } catch (fetchError: any) {
-      console.error('[LLM API] Fetch error details:', fetchError);
-      throw new Error(`Failed to connect to Ollama (is it running?): ${fetchError.message}`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[LLM API] Ollama error ${response.status}:`, errorText);
-      throw new Error(`Ollama error: ${response.status} - ${errorText}`);
-    }
-
-    console.log(`[LLM API] Initial request successful (${Date.now() - startTime}ms)`);
-
-    // ✅ TOOL LOOPING (non-stream only for simplicity)
-    if (!stream) {
-      let data = await response.json();
-      let allMessages = body.messages;
-
-      console.log(`[LLM API] Response has ${data.choices[0].message.tool_calls?.length || 0} tool calls`);
-
-      // Loop until no more tool calls
       let loopCount = 0;
-      const maxLoops = 5; // Prevent infinite loops
+      const maxLoops = 5;
 
-      while (data.choices[0].message.tool_calls?.length) {
+      while (currentCompletion.choices[0].message.tool_calls?.length) {
         loopCount++;
-        console.log(`[LLM API] Tool loop iteration ${loopCount}/${maxLoops}`);
-
         if (loopCount > maxLoops) {
-          console.error('[LLM API] Max tool loop iterations reached');
-          throw new Error('Max tool loop iterations reached. Possible infinite loop.');
+          throw new Error('Max tool loop iterations reached');
         }
 
-        const toolCalls = data.choices[0].message.tool_calls;
-        console.log(`[LLM API] Processing ${toolCalls.length} tool call(s):`, toolCalls.map((tc: any) => tc.function.name));
+        const toolCalls = currentCompletion.choices[0].message.tool_calls;
+        allMessages.push(currentCompletion.choices[0].message as ChatCompletionMessageParam);
+        allMessages = await executeTools(toolCalls as any, allMessages);
 
-        allMessages.push(data.choices[0].message);
-        allMessages = await executeTools(toolCalls, allMessages);
-
-        // Re-call LLM with tool results
-        try {
-          response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
-            body: JSON.stringify({ model, messages: allMessages, stream: false })
-          });
-        } catch (fetchError: any) {
-          throw fetchError;
-        }
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[LLM API] Tool loop Ollama error ${response.status}:`, errorText);
-          throw new Error(`Ollama error: ${response.status}`);
-        }
-
-        data = await response.json();
-        console.log(`[LLM API] Tool loop response has ${data.choices[0].message.tool_calls?.length || 0} more tool calls`);
+        // Make another call with the updated messages
+        currentCompletion = await openai.chat.completions.create({
+          model,
+          messages: allMessages,
+          stream: false,
+        } as any);
       }
-
-      console.log(`[LLM API] Tool execution complete after ${loopCount} iterations. Total time: ${Date.now() - startTime}ms`);
-      return NextResponse.json(data.choices[0].message);
     }
 
-    // Stream unchanged
-    console.log(`[LLM API] Returning stream response. Time: ${Date.now() - startTime}ms`);
-    return new Response(response.body, {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*'
-      }
-    });
+    const assistantMessage = currentCompletion.choices[0].message.content || '';
 
-  } catch (error: any) {
-    const duration = Date.now() - startTime;
-    console.error(`[LLM API] ====== Error after ${duration}ms ======`);
-    console.error('[LLM API] Error details:', error);
-    console.error('[LLM API] Stack trace:', error.stack);
+    // ============================================================
+    // SAVE ASSISTANT RESPONSE TO MEMORY (non-streaming)
+    // ============================================================
+    try {
+      await memory.saveMessage(
+        currentConversationId,
+        'assistant',
+        assistantMessage,
+        { model_used: model }
+      );
+    } catch (error) {
+      console.warn('[Memory] Error saving assistant message:', error);
+    }
 
+    // Return response with conversation ID
     return NextResponse.json({
-      error: error.message || 'Server error',
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString()
-    }, { status: 500 });
+      ...currentCompletion.choices[0].message,
+      conversationId: currentConversationId,
+    });
+  } catch (error: any) {
+    console.error('[LLM API] Error:', error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 }

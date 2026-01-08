@@ -35,13 +35,15 @@ export class OllamaEmbeddings {
     }
 
     try {
+      const payload: EmbeddingRequest = {
+        model: this.embeddingModel,
+        input: text,
+      };
+
       const response = await fetch(`${this.ollamaHost}/api/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.embeddingModel,
-          input: text,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -50,9 +52,7 @@ export class OllamaEmbeddings {
         );
       }
 
-      const data = (await response.json()) as {
-        embeddings: number[][];
-      };
+      const data = (await response.json()) as EmbeddingResponse;
 
       if (!data.embeddings || data.embeddings.length === 0) {
         throw new Error('No embeddings returned from Ollama');
@@ -78,13 +78,15 @@ export class OllamaEmbeddings {
    */
   async embedBatch(texts: string[]): Promise<number[][]> {
     try {
+      const payload: EmbeddingRequest = {
+        model: this.embeddingModel,
+        input: texts,
+      };
+
       const response = await fetch(`${this.ollamaHost}/api/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.embeddingModel,
-          input: texts,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -93,9 +95,7 @@ export class OllamaEmbeddings {
         );
       }
 
-      const data = (await response.json()) as {
-        embeddings: number[][];
-      };
+      const data = (await response.json()) as EmbeddingResponse;
 
       if (!data.embeddings) {
         throw new Error('No embeddings returned from Ollama');
