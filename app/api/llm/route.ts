@@ -44,15 +44,17 @@ Keep responses 1-3 sentences. Be direct and helpful.`
         },
         ...messages.slice(-10)
       ],
-      max_tokens: 1024,
+      max_tokens: 2048,
       temperature: 0.3,
       top_p: 0.85,
       stream,
       options: {
-        num_thread: 10,
+        num_thread: 12,  // Increased threads
         num_gpu: 99,
-        num_ctx: 8192,
-        repeat_penalty: 1.2
+        num_ctx: 16384,  // Increased context window
+        repeat_penalty: 1.2,
+        num_batch: 512,  // Batch processing
+        num_predict: 2048  // Max prediction tokens
       }
     };
 
@@ -74,10 +76,12 @@ Keep responses 1-3 sentences. Be direct and helpful.`
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ollama'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        keepalive: true
       });
     } catch (fetchError: any) {
-      throw new Error(`Failed to connect to Ollama: ${fetchError.message}`);
+      console.error('[LLM API] Fetch error details:', fetchError);
+      throw new Error(`Failed to connect to Ollama (is it running?): ${fetchError.message}`);
     }
 
     if (!response.ok) {
