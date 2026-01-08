@@ -1,6 +1,10 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}', './components/**/*.{js,ts,jsx,tsx}', './app/**/*.{js,ts,jsx,tsx}'],
+export default {
+  content: [
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+    './app/**/*.{js,ts,jsx,tsx}'
+  ],
   theme: {
     extend: {
       backgroundImage: {
@@ -10,7 +14,6 @@ module.exports = {
     },
   },
   plugins: [],
-  // ✅ Fix gradient classes
   corePlugins: {
     preflight: false
   }

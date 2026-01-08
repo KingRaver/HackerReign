@@ -45,22 +45,28 @@ export async function POST(req: NextRequest) {
     }
 
     // ✅ FIXED: Direct HTTP for Ollama options (bypasses TS)
-    const url = `http://localhost:11434/v1/chat/completions`;
-    const body = {
-      model,
-      messages,
-      max_tokens: 4096,
-      temperature: 0.1,
-      top_p: 0.9,
-      stream,
-      options: {  // ✅ Direct Ollama param
-        num_thread: 10,
-        num_gpu: 99,
-        num_ctx: 8192,
-        repeat_penalty: 1.1
-      }
-    };
+    const body: any = {
+        model,
+        messages: [
+            {
+            role: 'system',
+            content: `You are Hacker Reign, a friendly coding assistant...`
+            },
+            ...messages.slice(-10)
+        ],
+        max_tokens: 1024,
+        temperature: 0.7,
+        top_p: 0.9,
+        stream,
+        options: {
+            num_thread: 10,
+            num_gpu: 99,
+            num_ctx: 8192,
+            repeat_penalty: 1.1
+        }
+        };
 
+    const url = 'http://localhost:11434/v1/chat/completions';
     const response = await fetch(url, {
       method: 'POST',
       headers: {

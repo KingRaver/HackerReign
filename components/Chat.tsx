@@ -141,9 +141,9 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Messages - ✅ Full scrollable version */}
-        <div className="flex-1 flex flex-col bg-black/10 backdrop-blur-xl rounded-2xl p-6 border border-white/10 space-y-4">
-        <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+      {/* Messages - ✅ Fixed height + perfect scroll */}
+        <div className="h-[70vh] flex flex-col bg-black/10 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+        <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent space-y-4">
             
             {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-white/40">
@@ -188,6 +188,7 @@ export default function Chat() {
             <div ref={messagesEndRef} />
         </div>
         </div>
+
 
 
       {/* Input */}
