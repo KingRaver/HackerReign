@@ -234,14 +234,22 @@ Continue to be helpful, direct, and concise. Reference past conversations if rel
     chroma_stats: { count: number; name: string };
     sqlite_stats: any;
     embedding_model_available: boolean;
-    embedding_dimension: number;
+    embedding_dimension: number | null;
   }> {
     try {
       const chromaStats = await this.retrieval.getStats();
       const storage = getStorage();
       const sqliteStats = storage.getStats();
       const modelAvailable = await this.embeddings.checkModelAvailability();
-      const embeddingDim = await this.embeddings.getEmbeddingDimension();
+
+      let embeddingDim: number | null = null;
+      if (modelAvailable) {
+        try {
+          embeddingDim = await this.embeddings.getEmbeddingDimension();
+        } catch (error) {
+          console.warn('[RAGManager] Could not get embedding dimension:', error);
+        }
+      }
 
       return {
         chroma_stats: chromaStats,

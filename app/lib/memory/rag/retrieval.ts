@@ -23,9 +23,12 @@ export class ChromaRetrieval {
     topK: number = 5,
     similarityThreshold: number = 0.3
   ) {
-    // Initialize Chroma client (uses HTTP by default)
+    // Initialize Chroma client with host/port (HTTP connection)
+    const chromaHost = process.env.CHROMA_HOST || 'localhost';
+    const chromaPort = process.env.CHROMA_PORT || '8000';
+
     this.client = new ChromaClient({
-      path: process.env.CHROMA_DB_PATH || './.data/chroma',
+      path: `http://${chromaHost}:${chromaPort}`,
     });
 
     this.collectionName = collectionName;

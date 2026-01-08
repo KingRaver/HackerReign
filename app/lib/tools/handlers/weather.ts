@@ -45,16 +45,7 @@ export default async function get_weather(args: FunctionArguments) {
 
     const data = (await response.json()) as OpenWeatherResponse;
 
-    return {
-      city: data.name,
-      temperature: `${Math.round(data.main.temp)}°C`,
-      feels_like: `${Math.round(data.main.feels_like)}°C`,
-      condition: data.weather[0].main,
-      description: data.weather[0].description,
-      humidity: `${data.main.humidity}%`,
-      wind_speed: `${data.wind.speed} m/s`,
-      timestamp: new Date().toISOString()
-    };
+    return `${data.weather[0].description} ${Math.round(data.main.temp)} degrees feeling like ${Math.round(data.main.feels_like)} degrees humidity ${data.main.humidity} percent wind speed ${data.wind.speed} m/s`;
   } catch (error) {
     console.error('[Weather Tool] Error fetching weather data:', error);
     throw error;

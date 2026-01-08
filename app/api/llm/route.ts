@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
 
     const memory = getMemoryManager();
 
+    // Initialize memory system if not already initialized
+    await memory.initialize();
+
     // Create conversation if needed
     let currentConversationId = conversationId;
     if (!currentConversationId) {
