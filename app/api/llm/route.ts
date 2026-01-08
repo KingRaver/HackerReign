@@ -229,22 +229,92 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
       let loopCount = 0;
       const maxLoops = 5;
 
-      while (currentCompletion.choices[0].message.tool_calls?.length) {
-        loopCount++;
-        if (loopCount > maxLoops) {
-          throw new Error('Max tool loop iterations reached');
+      while (true) {
+        const message = currentCompletion.choices[0].message;
+
+        // Check for proper tool_calls format
+        if (message.tool_calls?.length) {
+          loopCount++;
+          if (loopCount > maxLoops) {
+            throw new Error('Max tool loop iterations reached');
+          }
+
+          const toolCalls = message.tool_calls;
+          allMessages.push(message as ChatCompletionMessageParam);
+          allMessages = await executeTools(toolCalls as any, allMessages);
+
+          // Make another call with the updated messages
+          currentCompletion = await openai.chat.completions.create({
+            model,
+            messages: allMessages,
+            stream: false,
+          } as any);
+          continue;
         }
 
-        const toolCalls = currentCompletion.choices[0].message.tool_calls;
-        allMessages.push(currentCompletion.choices[0].message as ChatCompletionMessageParam);
-        allMessages = await executeTools(toolCalls as any, allMessages);
+        // WORKAROUND: Ollama returns tool calls as text content
+        // Try to parse content as a tool call
+        if (message.content && typeof message.content === 'string') {
+          const content = message.content.trim();
 
-        // Make another call with the updated messages
-        currentCompletion = await openai.chat.completions.create({
-          model,
-          messages: allMessages,
-          stream: false,
-        } as any);
+          // Check if content looks like a tool call JSON
+          if ((content.startsWith('{') && content.includes('"name"')) ||
+              (content.startsWith('```json') && content.includes('"name"'))) {
+            try {
+              // Extract JSON from code blocks if present
+              let jsonStr = content;
+              if (content.startsWith('```')) {
+                const match = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+                if (match) jsonStr = match[1];
+              }
+
+              const toolCall = JSON.parse(jsonStr);
+
+              if (toolCall.name && toolCall.arguments) {
+                loopCount++;
+                if (loopCount > maxLoops) {
+                  throw new Error('Max tool loop iterations reached');
+                }
+
+                console.log('[Tool Workaround] Detected tool call in content:', toolCall.name);
+
+                // Convert to proper tool_calls format
+                const syntheticToolCall = {
+                  id: `call_${Date.now()}`,
+                  type: 'function' as const,
+                  function: {
+                    name: toolCall.name,
+                    arguments: JSON.stringify(toolCall.arguments)
+                  }
+                };
+
+                // Add assistant message without the tool call content
+                allMessages.push({
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [syntheticToolCall]
+                } as any);
+
+                // Execute the tool
+                allMessages = await executeTools([syntheticToolCall] as any, allMessages);
+
+                // Make another call with the updated messages
+                currentCompletion = await openai.chat.completions.create({
+                  model,
+                  messages: allMessages,
+                  stream: false,
+                } as any);
+                continue;
+              }
+            } catch (e) {
+              // Not a valid tool call JSON, treat as normal content
+              console.log('[Tool Workaround] Content is not a valid tool call:', e);
+            }
+          }
+        }
+
+        // No tool calls found, exit loop
+        break;
       }
     }
 
