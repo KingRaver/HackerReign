@@ -1,40 +1,4 @@
-import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
-import type * as OpenAIType from 'openai';
-
-// ✅ Type-safe Ollama options injection
-const openai = new OpenAI({ 
-  baseURL: 'http://localhost:11434/v1', 
-  apiKey: 'ollama',
-  timeout: 120000 
-});
-
-// ✅ Edge stream polyfill (captures full content)
-class OpenAIStream {
-  static create(
-    completion: any, 
-    opts: { onCompletion?: (text: string) => void } = {}
-  ) {
-    const encoder = new TextEncoder();
-    let fullContent = '';
-    
-    return new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of completion as any) {
-            const content = chunk.choices[0]?.delta?.content || '';
-            fullContent += content;
-            if (content) controller.enqueue(encoder.encode(content));
-          }
-          controller.close();
-          opts.onCompletion?.(fullContent);
-        } catch (error) {
-          controller.error(error);
-        }
-      }
-    });
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,25 +10,34 @@ export async function POST(req: NextRequest) {
 
     // ✅ FIXED: Direct HTTP for Ollama options (bypasses TS)
     const body: any = {
-        model,
-        messages: [
-            {
-            role: 'system',
-            content: `You are Hacker Reign, a friendly coding assistant...`
-            },
-            ...messages.slice(-10)
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-        top_p: 0.9,
-        stream,
-        options: {
-            num_thread: 10,
-            num_gpu: 99,
-            num_ctx: 8192,
-            repeat_penalty: 1.1
-        }
-        };
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: `CRITICAL: PLAIN TEXT ONLY. NO markdown. NO backticks. NO lists. NO code blocks.
+
+You are Hacker Reign - friendly coding expert. Sound human. 1-3 sentences max.
+
+EXAMPLES:
+print hello -> print("Hello World")
+react hook -> useState(0)
+api route -> app/api/route.ts export POST(req)
+
+Plain text responses only. Be direct and helpful.`
+        },
+        ...messages.slice(-10)
+      ],
+      max_tokens: 1024,
+      temperature: 0.3,
+      top_p: 0.85,
+      stream,
+      options: {
+        num_thread: 10,
+        num_gpu: 99,
+        num_ctx: 8192,
+        repeat_penalty: 1.2
+      }
+    };
 
     const url = 'http://localhost:11434/v1/chat/completions';
     const response = await fetch(url, {
