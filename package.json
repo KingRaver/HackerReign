@@ -1,14 +1,19 @@
 {
   "name": "hackerreign",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint . --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "analyze": "next build && npx @next/bundle-analyzer dist",
+    "preview": "next build && next start"
   },
   "dependencies": {
+    "ai": "^6.0.20",
     "next": "16.1.1",
     "openai": "^6.15.0",
     "react": "19.2.3",
@@ -22,6 +27,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "postcss": "^8.5.1",
+    "@next/bundle-analyzer": "^16.1.1"
   }
 }
