@@ -25,10 +25,11 @@ export class ChromaRetrieval {
   ) {
     // Initialize Chroma client with host/port (HTTP connection)
     const chromaHost = process.env.CHROMA_HOST || 'localhost';
-    const chromaPort = process.env.CHROMA_PORT || '8000';
+    const chromaPort = parseInt(process.env.CHROMA_PORT || '8000', 10);
 
     this.client = new ChromaClient({
-      path: `http://${chromaHost}:${chromaPort}`,
+      host: chromaHost,
+      port: chromaPort,
     });
 
     this.collectionName = collectionName;
@@ -39,15 +40,44 @@ export class ChromaRetrieval {
 
   /**
    * Initialize Chroma collection
+   * Recreates collection if it exists with incompatible embedding function
    */
   async initialize(): Promise<void> {
     try {
-      // Get or create collection
-      await this.client.getOrCreateCollection({
+      // Try to get existing collection
+      try {
+        await this.client.getCollection({
+          name: this.collectionName,
+        });
+
+        // If we get here, collection exists
+        // Collections created with default embedding function will cause warnings
+        // Recreate to ensure clean state with proper embedding function setup
+        console.log('[ChromaRetrieval] Existing collection found, recreating for clean state...');
+        await this.client.deleteCollection({ name: this.collectionName });
+      } catch (error: any) {
+        // Collection doesn't exist or other error - we'll create it fresh
+        if (error?.message?.includes('does not exist')) {
+          console.log('[ChromaRetrieval] No existing collection found, creating new...');
+        } else {
+          console.log('[ChromaRetrieval] Collection needs recreation due to:', error?.message);
+          try {
+            await this.client.deleteCollection({ name: this.collectionName });
+          } catch {
+            // Collection might not exist, continue
+          }
+        }
+      }
+
+      // Create collection with no embedding function (we provide embeddings directly)
+      await this.client.createCollection({
         name: this.collectionName,
+        embeddingFunction: undefined,
         metadata: {
           hnsw_space: 'cosine', // Use cosine similarity
           description: 'Hacker Reign conversation embeddings',
+          created_at: new Date().toISOString(),
+          embedding_provider: 'ollama',
         },
       });
 
@@ -70,6 +100,7 @@ export class ChromaRetrieval {
       // Get collection
       const collection = await this.client.getCollection({
         name: this.collectionName,
+        embeddingFunction: undefined,
       });
 
       // Add to collection with metadata
@@ -121,6 +152,7 @@ export class ChromaRetrieval {
       // Get collection
       const collection = await this.client.getCollection({
         name: this.collectionName,
+        embeddingFunction: undefined,
       });
 
       // Add to collection
@@ -157,6 +189,7 @@ export class ChromaRetrieval {
       // Get collection
       const collection = await this.client.getCollection({
         name: this.collectionName,
+        embeddingFunction: undefined,
       });
 
       // Query collection
