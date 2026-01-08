@@ -87,7 +87,6 @@ export default function Chat() {
         }
         }
 
-
     } catch (error: unknown) {
       console.error('Chat error:', error);
       const errorMsg: Message = { 
@@ -115,14 +114,14 @@ export default function Chat() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto bg-linear-to-br from-slate-900/90 via-purple-900/20 to-slate-900/90 backdrop-blur-3xl rounded-3xl shadow-2xl border border-white/10 p-8 space-y-8 h-screen flex flex-col">
-      {/* Header remains same... */}
+    <div className="max-w-4xl mx-auto bg-linear-to-br from-slate-900/90 via-teal/20 to-slate-900/90 backdrop-blur-3xl rounded-3xl shadow-2xl border border-cyan-light/10 p-8 space-y-8 h-screen flex flex-col">
+      {/* Header with new palette */}
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="text-center sm:text-left">
-          <h1 className="text-3xl font-black bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent drop-shadow-lg">
+          <h1 className="text-3xl font-black bg-linear-to-r from-cyan-light via-teal to-yellow bg-clip-text text-transparent drop-shadow-lg">
             Hacker Reign
           </h1>
-          <p className="text-white/60 text-sm">M4 Local AI • Production Ready</p>
+          <p className="text-white/60 text-sm">Enterprise Intelligence</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {models.map((m) => (
@@ -131,7 +130,7 @@ export default function Chat() {
               onClick={() => setModel(m.id)}
               className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all shadow-lg hover:scale-105 ${
                 model === m.id
-                  ? 'bg-linear-to-r from-blue-500/90 to-purple-600/90 text-white'
+                  ? 'bg-linear-to-r from-teal/90 to-cyan-light/90 text-white shadow-teal/50'
                   : 'bg-white/5 text-white/70 hover:bg-white/10'
               }`}
             >
@@ -141,13 +140,13 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Messages - ✅ Fixed height + perfect scroll */}
-        <div className="h-[70vh] flex flex-col bg-black/10 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
-        <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent space-y-4">
+      {/* Messages - with new palette accents */}
+        <div className="h-[70vh] flex flex-col bg-black/10 backdrop-blur-xl rounded-2xl p-6 border border-cyan-light/10">
+        <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-teal/30 scrollbar-track-transparent space-y-4">
             
             {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-white/40">
-                <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-blue-500/20 to-purple-500/20 border-2 border-white/20 animate-pulse" />
+                <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-cyan-light/20 to-teal/20 border-2 border-cyan-light/20 animate-pulse" />
                 <p className="text-lg font-medium">Select your AI specialist</p>
                 <p className="text-sm mt-2 opacity-75">Python • Next.js • Offline</p>
             </div>
@@ -158,10 +157,10 @@ export default function Chat() {
                     key={msg.id} 
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-200`}
                 >
-                    <div className={`max-w-2xl p-6 rounded-2xl shadow-xl backdrop-blur-sm border border-white/10 prose prose-invert prose-headings:text-white prose-a:text-blue-400 hover:scale-[1.01] transition-transform ${
+                    <div className={`max-w-2xl p-6 rounded-2xl shadow-xl backdrop-blur-sm border prose prose-invert prose-headings:text-white prose-a:text-cyan-light hover:scale-[1.01] transition-transform ${
                     msg.role === 'user'
-                        ? 'bg-linear-to-r from-blue-500/90 to-blue-600/90 text-white shadow-blue-500/25'
-                        : 'bg-white/5 text-white hover:bg-white/10 shadow-purple-500/20'
+                        ? 'bg-linear-to-r from-teal/90 to-cyan-light/90 text-white shadow-teal/25 border-cyan-light/20'
+                        : 'bg-white/5 text-white hover:bg-white/10 shadow-yellow/20 border-white/10'
                     }`}>
                     <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                     </div>
@@ -170,12 +169,12 @@ export default function Chat() {
                 
                 {isLoading && (
                 <div className="flex justify-start animate-in slide-in-from-bottom-2">
-                    <div className="p-6 rounded-2xl bg-white/5 text-white border border-white/10 shadow-xl">
+                    <div className="p-6 rounded-2xl bg-white/5 text-white border border-cyan-light/10 shadow-xl">
                     <div className="flex items-center gap-3">
                         <div className="flex space-x-1">
-                        <div className="w-3 h-3 bg-white/40 rounded-full animate-bounce [animation-delay:0s]" />
-                        <div className="w-3 h-3 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" />
-                        <div className="w-3 h-3 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <div className="w-3 h-3 bg-cyan-light/60 rounded-full animate-bounce [animation-delay:0s]" />
+                        <div className="w-3 h-3 bg-teal/60 rounded-full animate-bounce [animation-delay:0.1s]" />
+                        <div className="w-3 h-3 bg-yellow/60 rounded-full animate-bounce [animation-delay:0.2s]" />
                         </div>
                         <span className="text-sm opacity-75">Thinking... ({model.split(':')[0]})</span>
                     </div>
@@ -189,30 +188,28 @@ export default function Chat() {
         </div>
         </div>
 
-
-
-      {/* Input */}
-      <div className="flex gap-3 p-1 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10">
+      {/* Input with new palette */}
+      <div className="flex gap-3 p-1 bg-white/5 backdrop-blur-sm rounded-2xl border border-cyan-light/10">
         <textarea
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyPress}
           placeholder="Ask about code, Web3, or anything... (Enter to send)"
-          className="flex-1 p-5 bg-transparent text-white placeholder-white/40 border-0 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-xl min-h-11 max-h-32"
+          className="flex-1 p-5 bg-transparent text-white placeholder-white/40 border-0 resize-none focus:outline-none focus:ring-2 focus:ring-teal/50 rounded-xl min-h-11 max-h-32"
           rows={1}
           disabled={isLoading}
         />
         <button
           onClick={sendMessage}
           disabled={isLoading || !input.trim()}
-          className="px-8 py-5 bg-linear-to-r from-emerald-500/90 to-teal-600/90 text-white font-bold rounded-xl shadow-2xl hover:shadow-emerald-500/25 transition-all disabled:opacity-50 whitespace-nowrap"
+          className="px-8 py-5 bg-linear-to-r from-yellow/90 to-peach/90 text-gray-900 font-bold rounded-xl shadow-2xl hover:shadow-yellow/25 transition-all disabled:opacity-50 whitespace-nowrap hover:scale-105"
         >
           Send
         </button>
       </div>
 
-      <div className="text-xs text-white/40 text-center pt-2 border-t border-white/10">
+      <div className="text-xs text-white/40 text-center pt-2 border-t border-cyan-light/10">
         🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages
       </div>
     </div>
