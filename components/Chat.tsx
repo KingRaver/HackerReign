@@ -13,6 +13,7 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [partialContent, setPartialContent] = useState('');
+  const [enableTools, setEnableTools] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -38,54 +39,69 @@ export default function Chat() {
       const response = await fetch('/api/llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages: [...messages, userMsg] })
+        body: JSON.stringify({
+          model,
+          messages: [...messages, userMsg],
+          stream: !enableTools,  // Disable streaming when tools are enabled
+          enableTools
+        })
       });
 
       if (!response.ok) throw new Error('API error');
 
       const aiId = (Date.now() + 1).toString();
-      const aiMsg: Message = { id: aiId, role: 'assistant', content: '' };
-      setMessages(prev => [...prev, aiMsg]);
 
-      if (response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullContent = '';
+      if (enableTools) {
+        // Handle non-streaming response (when tools are enabled)
+        const data = await response.json();
+        const content = data.content || '';
+        const aiMsg: Message = { id: aiId, role: 'assistant', content };
+        setMessages(prev => [...prev, aiMsg]);
+      } else {
+        // Handle streaming response (when tools are disabled)
+        const aiMsg: Message = { id: aiId, role: 'assistant', content: '' };
+        setMessages(prev => [...prev, aiMsg]);
 
-        try {
+        if (response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let fullContent = '';
+
+          try {
             while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
 
-            for (const line of lines) {
+              for (const line of lines) {
                 if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') break;
+                  const data = line.slice(6);
+                  if (data === '[DONE]') break;
 
-                try {
+                  try {
                     const parsed = JSON.parse(data);
                     const content = parsed.choices?.[0]?.delta?.content || '';
                     if (content) {
-                    fullContent += content;
-                    setMessages(prev => prev.map(msg => 
-                        msg.id === aiId 
-                        ? { ...msg, content: fullContent } 
-                        : msg
-                    ));
+                      fullContent += content;
+                      setMessages(prev => prev.map(msg =>
+                        msg.id === aiId
+                          ? { ...msg, content: fullContent }
+                          : msg
+                      ));
                     }
-                } catch {
+                  } catch {
                     // Skip invalid JSON
+                  }
                 }
-                }
+              }
             }
-            }
-        } finally {
+          } finally {
             reader.releaseLock();
+          }
         }
-        }
+      }
 
     } catch (error: unknown) {
       console.error('Chat error:', error);
@@ -123,20 +139,32 @@ export default function Chat() {
           </h1>
           <p className="text-white/60 text-sm">Enterprise Intelligence</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {models.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setModel(m.id)}
-              className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all shadow-lg hover:scale-105 ${
-                model === m.id
-                  ? 'bg-linear-to-r from-teal/90 to-cyan-light/90 text-white shadow-teal/50'
-                  : 'bg-white/5 text-white/70 hover:bg-white/10'
-              }`}
-            >
-              {m.name.split(' ')[0]} <span>{m.speed}</span>
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Model Dropdown */}
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="px-4 py-3 rounded-2xl text-sm font-semibold bg-white/5 text-white border border-cyan-light/20 hover:bg-white/10 transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-teal/50 cursor-pointer"
+          >
+            {models.map((m) => (
+              <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                {m.name} {m.speed}
+              </option>
+            ))}
+          </select>
+
+          {/* Tools Toggle */}
+          <button
+            onClick={() => setEnableTools(!enableTools)}
+            className={`px-4 py-3 rounded-2xl text-sm font-semibold transition-all shadow-lg hover:scale-105 flex items-center gap-2 ${
+              enableTools
+                ? 'bg-linear-to-r from-yellow/90 to-peach/90 text-gray-900 shadow-yellow/50'
+                : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+            }`}
+          >
+            <span className="text-base">{enableTools ? '🔧' : '⚡'}</span>
+            <span>{enableTools ? 'Tools ON' : 'Fast Mode'}</span>
+          </button>
         </div>
       </div>
 

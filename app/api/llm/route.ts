@@ -8,10 +8,11 @@ export async function POST(req: NextRequest) {
   console.log('\n[LLM API] ====== New Request ======');
 
   try {
-    const { model = 'qwen2.5-coder:7b-instruct-q5_K_M', messages, stream = true }: {
+    const { model = 'qwen2.5-coder:7b-instruct-q5_K_M', messages, stream = true, enableTools = false }: {
       model?: string;
       messages: ChatCompletionMessage[];
       stream?: boolean;
+      enableTools?: boolean;
     } = await req.json();
 
     console.log(`[LLM API] Model: ${model}, Stream: ${stream}, Messages: ${messages?.length || 0}`);
@@ -21,31 +22,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Messages required' }, { status: 400 });
     }
 
-    // Tool support: Add tools if model supports (Qwen2.5/Llama3.2 do)
-    const tools = getTools();
+    // Tool support: Only add tools if explicitly enabled
     const body: any = {
       model,
       messages: [
         {
           role: 'system',
-          content: `CRITICAL: PLAIN TEXT ONLY. NO markdown. NO backticks. NO lists. NO code blocks.
+          content: `You are Hacker Reign - a friendly coding expert. Respond in plain text only.
 
-You are Hacker Reign - friendly coding expert. Sound human. 1-3 sentences max.
+CRITICAL RULES:
+- NO markdown syntax (no *, #, \`, [], etc)
+- NO code blocks or backticks
+- NO lists with bullets or numbers
+- NO formatting symbols
+- Just plain conversational text
 
-TOOLS: You have access to weather, calculator, and code execution tools. Use them when appropriate.
+For code: write it inline like this -> print("hello") or useState(0)
+For explanations: use natural sentences with commas and periods
 
-EXAMPLES:
-print hello -> print("Hello World")
-react hook -> useState(0)
-api route -> app/api/route.ts export POST(req)
-weather NYC -> Use get_weather tool
-
-Plain text responses only. Be direct and helpful.`
+Keep responses 1-3 sentences. Be direct and helpful.`
         },
         ...messages.slice(-10)
       ],
-      tools, // ✅ Add tools dynamically
-      tool_choice: 'auto', // Let model decide
       max_tokens: 1024,
       temperature: 0.3,
       top_p: 0.85,
@@ -58,11 +56,15 @@ Plain text responses only. Be direct and helpful.`
       }
     };
 
-    const url = 'http://localhost:11434/v1/chat/completions';
+    // Only add tools if requested (significantly improves performance)
+    if (enableTools) {
+      const tools = getTools();
+      body.tools = tools;
+      body.tool_choice = 'auto';
+      body.messages[0].content += '\n\nTOOLS: You have access to weather, calculator, and code execution tools. Use them when appropriate.';
+    }
 
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const url = 'http://localhost:11434/v1/chat/completions';
 
     let response;
     try {
@@ -72,17 +74,10 @@ Plain text responses only. Be direct and helpful.`
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ollama'
         },
-        body: JSON.stringify(body),
-        signal: controller.signal
+        body: JSON.stringify(body)
       });
     } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        throw new Error('Ollama request timed out after 30s. Check if Ollama is running and responsive.');
-      }
       throw new Error(`Failed to connect to Ollama: ${fetchError.message}`);
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     if (!response.ok) {
@@ -119,25 +114,15 @@ Plain text responses only. Be direct and helpful.`
         allMessages.push(data.choices[0].message);
         allMessages = await executeTools(toolCalls, allMessages);
 
-        // Re-call LLM with tool results - add timeout
-        const controller2 = new AbortController();
-        const timeoutId2 = setTimeout(() => controller2.abort(), 30000);
-
+        // Re-call LLM with tool results
         try {
           response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
-            body: JSON.stringify({ model, messages: allMessages, stream: false }),
-            signal: controller2.signal
+            body: JSON.stringify({ model, messages: allMessages, stream: false })
           });
         } catch (fetchError: any) {
-          clearTimeout(timeoutId2);
-          if (fetchError.name === 'AbortError') {
-            throw new Error('Tool loop request timed out after 30s');
-          }
           throw fetchError;
-        } finally {
-          clearTimeout(timeoutId2);
         }
 
         if (!response.ok) {
