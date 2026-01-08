@@ -11,6 +11,20 @@ hackerreign/
 │   │   └── llm/                  # LLM endpoint
 │   │       └── route.ts          # LLM API handler with tool support
 │   ├── lib/                      # Shared utilities and libraries
+│   │   ├── memory/               # Memory and RAG system
+│   │   │   ├── index.ts          # Storage singleton exports
+│   │   │   ├── schemas.ts        # TypeScript schemas for conversations/messages
+│   │   │   ├── storage/          # Data persistence layer
+│   │   │   │   ├── index.ts      # SQLite storage singleton management
+│   │   │   │   └── sqlite.ts     # SQLite implementation for conversations
+│   │   │   ├── rag/              # Retrieval-Augmented Generation
+│   │   │   │   ├── embeddings.ts # Ollama embeddings integration
+│   │   │   │   └── retrieval.ts  # ChromaDB vector search
+│   │   │   ├── migrations/       # Database schema migrations
+│   │   │   │   └── 001_initial_schema.sql
+│   │   │   ├── README.md         # Memory system documentation
+│   │   │   ├── INTEGRATION_GUIDE.md  # Integration instructions
+│   │   │   └── FILE_MANIFEST.md  # File descriptions
 │   │   └── tools/                # LLM tool integration
 │   │       ├── index.ts          # Tool exports and configuration
 │   │       ├── definitions.ts    # Tool JSON schemas
@@ -60,6 +74,24 @@ Server-side API endpoints. Currently hosts the LLM integration with tool support
 ### `/app/lib`
 Shared utilities and libraries used across the application.
 
+#### `/app/lib/memory`
+Memory and RAG (Retrieval-Augmented Generation) system:
+- **storage/** - SQLite-based conversation and message persistence
+- **rag/** - Vector embeddings and semantic search using ChromaDB and Ollama
+- **schemas.ts** - TypeScript types for conversations and messages
+- **migrations/** - Database schema version control
+
+**Features:**
+- Conversation history storage with SQLite
+- Semantic search over past conversations using vector embeddings
+- Ollama integration for generating embeddings
+- ChromaDB for efficient vector similarity search
+- Analytics tracking for search queries and retrieval performance
+
+**Dependencies:**
+- `better-sqlite3` - SQLite database driver
+- `chromadb` - Vector database for semantic search
+
 #### `/app/lib/tools`
 LLM tool integration system:
 - **index.ts** - Central export point for tool definitions
@@ -101,6 +133,16 @@ See `package.json` for available npm scripts:
 - `npm run type-check` - Check TypeScript types
 
 ## Recent Updates
+
+### Memory & RAG System Addition
+- **Conversation Storage**: SQLite-based persistence for conversations and messages
+- **Vector Search**: ChromaDB integration for semantic search over conversation history
+- **Embeddings**: Ollama integration for generating vector embeddings
+- **Analytics**: Search query tracking and performance metrics
+- **Dependencies Added**:
+  - `better-sqlite3` (v12.5.0) - SQLite database driver
+  - `@types/better-sqlite3` (v7.6.13) - TypeScript definitions
+  - `chromadb` (v3.2.0) - Vector database client
 
 ### LLM API & Tool System Improvements
 - **Timeout Protection**: Added 30-second fetch timeouts with AbortController to prevent indefinite hanging

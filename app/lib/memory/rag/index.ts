@@ -1,0 +1,319 @@
+// app/lib/memory/rag/index.ts
+// RAG (Retrieval-Augmented Generation) Orchestrator
+
+import { OllamaEmbeddings } from './embeddings';
+import { ChromaRetrieval } from './retrieval';
+import { Message, AugmentedPrompt, RetrievalResult } from '../schemas';
+import { getStorage } from '../storage';
+
+/**
+ * RAG Manager
+ * Orchestrates embeddings, storage, and retrieval
+ * This is the main interface for RAG operations
+ */
+export class RAGManager {
+  private embeddings: OllamaEmbeddings;
+  private retrieval: ChromaRetrieval;
+  private initialized: boolean = false;
+
+  constructor(
+    ollamaHost?: string,
+    embeddingModel?: string,
+    collectionName?: string,
+    topK?: number,
+    similarityThreshold?: number
+  ) {
+    this.embeddings = new OllamaEmbeddings(ollamaHost, embeddingModel);
+    this.retrieval = new ChromaRetrieval(
+      this.embeddings,
+      collectionName,
+      topK,
+      similarityThreshold
+    );
+  }
+
+  /**
+   * Initialize RAG system
+   * Call once at app startup
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      console.log('[RAGManager] Initializing RAG system...');
+
+      // Check if embedding model is available
+      const modelAvailable = await this.embeddings.checkModelAvailability();
+      if (!modelAvailable) {
+        console.warn(
+          '[RAGManager] Embedding model not available in Ollama. Make sure to pull it:'
+        );
+        console.warn('  ollama pull nomic-embed-text');
+      }
+
+      // Initialize Chroma collection
+      await this.retrieval.initialize();
+
+      this.initialized = true;
+      console.log('[RAGManager] RAG system initialized successfully');
+    } catch (error) {
+      console.error('[RAGManager] Error initializing RAG system:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process and embed a new message
+   * This happens after LLM generates a response
+   */
+  async processMessageForRAG(message: Message): Promise<void> {
+    try {
+      // Store in database first
+      const storage = getStorage();
+      const savedMessage = storage.getMessage(message.id) || message;
+
+      // Add to Chroma for semantic search
+      await this.retrieval.addMessageEmbedding(savedMessage);
+
+      // Update embedding metadata
+      storage.updateEmbeddingStatus(
+        `emb_${message.id}`,
+        'success',
+        message.id
+      );
+
+      console.log(`[RAGManager] Message ${message.id} processed for RAG`);
+    } catch (error) {
+      console.error('[RAGManager] Error processing message for RAG:', error);
+
+      // Still update status so we know it failed
+      const storage = getStorage();
+      storage.updateEmbeddingStatus(
+        `emb_${message.id}`,
+        'failed',
+        undefined,
+        (error as Error).message
+      );
+    }
+  }
+
+  /**
+   * Batch process multiple messages
+   * More efficient than processing one at a time
+   */
+  async processMessagesForRAG(messages: Message[]): Promise<void> {
+    try {
+      const storage = getStorage();
+
+      // Add to Chroma in batch
+      await this.retrieval.addMessageEmbeddingsBatch(messages);
+
+      // Update embedding metadata for all
+      messages.forEach(msg => {
+        storage.updateEmbeddingStatus(
+          `emb_${msg.id}`,
+          'success',
+          msg.id
+        );
+      });
+
+      console.log(`[RAGManager] Processed ${messages.length} messages for RAG`);
+    } catch (error) {
+      console.error('[RAGManager] Error batch processing messages:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieve similar messages for a query
+   * Used to augment LLM context
+   */
+  async retrieveSimilarMessages(
+    query: string,
+    topK?: number
+  ): Promise<RetrievalResult[]> {
+    try {
+      console.log(
+        `[RAGManager] Retrieving similar messages for: "${query.substring(0, 50)}..."`
+      );
+
+      const results = await this.retrieval.search(query, topK);
+
+      return results;
+    } catch (error) {
+      console.error('[RAGManager] Error retrieving similar messages:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieve messages with metadata filters
+   */
+  async retrieveWithFilters(
+    query: string,
+    filters: {
+      conversation_id?: string;
+      role?: 'user' | 'assistant';
+    },
+    topK?: number
+  ): Promise<RetrievalResult[]> {
+    try {
+      const results = await this.retrieval.searchWithFilters(
+        query,
+        filters,
+        topK
+      );
+
+      return results;
+    } catch (error) {
+      console.error('[RAGManager] Error retrieving with filters:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Augment a user query with retrieved context
+   * This is the main entry point for RAG-enhanced prompting
+   */
+  async augmentPrompt(
+    userMessage: string,
+    topK: number = 5
+  ): Promise<AugmentedPrompt> {
+    try {
+      // Retrieve similar messages
+      const retrievedContext = await this.retrieveSimilarMessages(
+        userMessage,
+        topK
+      );
+
+      // Build context string
+      let contextString = '';
+      if (retrievedContext.length > 0) {
+        contextString = 'Previous relevant context from your memory:\n\n';
+        retrievedContext.forEach((result, idx) => {
+          contextString += `[Memory ${idx + 1}] (Similarity: ${(
+            result.similarity_score * 100
+          ).toFixed(0)}%)\n`;
+          contextString += `${result.message.role.toUpperCase()}: ${
+            result.message.content.substring(0, 200) +
+            (result.message.content.length > 200 ? '...' : '')
+          }\n\n`;
+        });
+
+        contextString += '---\n\n';
+      }
+
+      // Create enhanced system prompt
+      const enhancedSystemPrompt = `You are Hacker Reign - a friendly coding expert with memory of past conversations.
+
+${contextString ? `You have access to relevant memories from past conversations that may help answer the current question.` : 'This is the start of a new conversation.'}
+
+Continue to be helpful, direct, and concise. Reference past conversations if relevant: "As we discussed before..." or "You mentioned..."`;
+
+      return {
+        original_query: userMessage,
+        retrieved_context: retrievedContext,
+        enhanced_system_prompt: enhancedSystemPrompt,
+      };
+    } catch (error) {
+      console.error('[RAGManager] Error augmenting prompt:', error);
+
+      // Return augmented prompt without context on error
+      return {
+        original_query: userMessage,
+        retrieved_context: [],
+        enhanced_system_prompt: `You are Hacker Reign - a friendly coding expert.`,
+      };
+    }
+  }
+
+  /**
+   * Get RAG system statistics
+   */
+  async getStats(): Promise<{
+    chroma_stats: { count: number; name: string };
+    sqlite_stats: any;
+    embedding_model_available: boolean;
+    embedding_dimension: number;
+  }> {
+    try {
+      const chromaStats = await this.retrieval.getStats();
+      const storage = getStorage();
+      const sqliteStats = storage.getStats();
+      const modelAvailable = await this.embeddings.checkModelAvailability();
+      const embeddingDim = await this.embeddings.getEmbeddingDimension();
+
+      return {
+        chroma_stats: chromaStats,
+        sqlite_stats: sqliteStats,
+        embedding_model_available: modelAvailable,
+        embedding_dimension: embeddingDim,
+      };
+    } catch (error) {
+      console.error('[RAGManager] Error getting stats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Manual embedding of text (useful for debugging)
+   */
+  async embedText(text: string): Promise<number[]> {
+    return this.embeddings.embed(text);
+  }
+
+  /**
+   * Clear all RAG data (for testing/reset)
+   */
+  async clear(): Promise<void> {
+    try {
+      await this.retrieval.clear();
+      this.embeddings.clearCache();
+      console.log('[RAGManager] RAG system cleared');
+    } catch (error) {
+      console.error('[RAGManager] Error clearing RAG system:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Format retrieved context for logging
+   */
+  formatContextForLogging(augmented: AugmentedPrompt): string {
+    if (augmented.retrieved_context.length === 0) {
+      return '(No similar context found)';
+    }
+
+    return augmented.retrieved_context
+      .map(
+        (r, i) =>
+          `${i + 1}. [${r.message.role}] (${(r.similarity_score * 100).toFixed(0)}%) ${
+            r.message.content.substring(0, 100) + '...'
+          }`
+      )
+      .join('\n');
+  }
+}
+
+/**
+ * Global RAG manager instance
+ */
+let ragInstance: RAGManager | null = null;
+
+/**
+ * Get or create RAG manager instance
+ */
+export function getRAGManager(): RAGManager {
+  if (!ragInstance) {
+    ragInstance = new RAGManager();
+  }
+  return ragInstance;
+}
+
+/**
+ * Initialize RAG manager
+ */
+export async function initializeRAG(): Promise<void> {
+  const manager = getRAGManager();
+  await manager.initialize();
+}
