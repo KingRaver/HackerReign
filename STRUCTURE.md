@@ -10,6 +10,8 @@ hackerreign/
 │   ├── api/                      # API routes
 │   │   ├── llm/                  # LLM endpoint
 │   │   │   └── route.ts          # LLM API handler with tool support
+│   │   ├── piper-tts/            # Piper TTS endpoint
+│   │   │   └── route.ts          # Server-side Piper TTS with Python CLI integration
 │   │   ├── stt/                  # Speech-to-Text endpoint
 │   │   │   └── route.ts          # STT API (placeholder for future server-side STT)
 │   │   └── tts/                  # Text-to-Speech endpoint
@@ -31,7 +33,9 @@ hackerreign/
 │   │   │   └── FILE_MANIFEST.md  # File descriptions
 │   │   ├── voice/                # Voice interaction system
 │   │   │   ├── useVoiceInput.ts  # Speech-to-Text hook (Web Speech API)
-│   │   │   ├── useVoiceOutput.ts # Text-to-Speech hook (Web Speech API)
+│   │   │   ├── useVoiceOutput.ts # Text-to-Speech hook (Web Speech API + Piper TTS)
+│   │   │   ├── useVoiceFlow.ts   # Unified voice flow orchestration hook
+│   │   │   ├── voiceStateManager.ts # Centralized state management for voice flow
 │   │   │   └── audioAnalyzer.ts  # Audio frequency analysis and beat detection
 │   │   └── tools/                # LLM tool integration
 │   │       ├── index.ts          # Tool exports and configuration
@@ -48,7 +52,8 @@ hackerreign/
 │
 ├── components/                   # React components
 │   ├── Chat.tsx                  # Chat interface component
-│   └── VoiceOrb.tsx              # Animated voice visualization component
+│   ├── VoiceOrb.tsx              # Canvas-based 2D voice visualization component
+│   └── ParticleOrb.tsx           # Three.js 3D particle visualization component
 │
 ├── public/                       # Static assets
 │   ├── file.svg
@@ -102,22 +107,37 @@ Memory and RAG (Retrieval-Augmented Generation) system:
 - `chromadb` - Vector database for semantic search
 
 #### `/app/lib/voice`
-Voice interaction system for speech input/output:
+Voice interaction system for speech input/output with unified flow orchestration:
 - **useVoiceInput.ts** - React hook for speech-to-text using Web Speech API
-- **useVoiceOutput.ts** - React hook for text-to-speech using Web Speech API
+- **useVoiceOutput.ts** - React hook for text-to-speech (Web Speech API + Piper TTS)
+- **useVoiceFlow.ts** - Unified voice flow orchestration combining STT, TTS, and auto-resume
+- **voiceStateManager.ts** - Centralized state management with pub/sub pattern
 - **audioAnalyzer.ts** - Real-time audio frequency analysis and beat detection
 
 **Features:**
+- **Conversation Flow**: idle → listening → processing → thinking → generating → speaking → auto-resume
 - Browser-based speech recognition (Web Speech API)
+- Server-side TTS with Piper Python integration
 - Real-time audio level monitoring and visualization
 - Spacebar push-to-talk functionality
-- Text-to-speech synthesis with voice selection
+- Auto-resume listening after AI responses (500ms delay)
+- State management with observer pattern for React components
 - Frequency analysis for visual feedback
 - Beat detection for responsive UI animations
 - Microphone permission handling and error recovery
 
+**State Machine:**
+- `idle` - Ready, waiting for user interaction
+- `listening` - Recording user speech
+- `processing` - Converting speech to text
+- `thinking` - LLM generating response
+- `generating` - Converting response to speech
+- `speaking` - Playing audio response
+- `error` - Error state with message
+
 **Dependencies:**
-- Built on native browser APIs (no external dependencies)
+- Built on native browser APIs (Web Speech API)
+- Piper TTS via Python CLI for server-side synthesis
 - Compatible with Chrome, Edge, and Safari
 
 #### `/app/lib/tools`
@@ -135,12 +155,22 @@ LLM tool integration system:
 
 ### `/components`
 Reusable React components used across the application:
-- **Chat.tsx** - Main chat interface with message history and input
-- **VoiceOrb.tsx** - Animated orb component for voice interaction visualization
+- **Chat.tsx** - Main chat interface with message history, input, and voice flow integration
+  - Integrates with useVoiceFlow for voice conversation
+  - Subscribes to voice state changes for UI updates
+  - Handles LLM responses and auto-TTS playback
+- **VoiceOrb.tsx** - Canvas-based 2D animated orb for voice visualization
   - Real-time audio level visualization with pulsing effects
   - State-based color schemes (listening: red, speaking: cyan, idle: teal)
-  - Canvas-based animations with smooth interpolation
+  - Smooth interpolation for natural animations
   - Click and spacebar interaction support
+- **ParticleOrb.tsx** - Three.js-based 3D particle visualization component
+  - 1000 particles with physics-based animation
+  - Sphere boundary with collision detection
+  - State-based forces (inward collapse when listening, outward pulse when speaking)
+  - Audio-reactive particle motion and beat detection
+  - Smooth color transitions between states
+  - Velocity damping and dynamic scaling
 
 ### `/public`
 Static files served directly by Next.js without processing.
@@ -168,32 +198,63 @@ See `package.json` for available npm scripts:
 
 ## Recent Updates
 
-### Voice Interaction System Addition
+### Voice Interaction System - Full Piper TTS Integration (January 2026)
+- **Unified Voice Flow**: Complete conversation orchestration with auto-resume
+  - State machine: idle → listening → processing → thinking → generating → speaking → auto-resume
+  - Centralized state management with pub/sub pattern
+  - 500ms delay before auto-resume for natural conversation pacing
+  - useVoiceFlow hook combines STT, TTS, and flow control
+  - voiceStateManager for cross-component state synchronization
+
+- **Piper TTS Server Integration**: Production-ready server-side text-to-speech
+  - Python CLI integration via `python3 -m piper`
+  - Voice model management in `~/.piper/models/`
+  - GET `/api/piper-tts/voices` - List available voice models
+  - POST `/api/piper-tts` - Generate speech audio (WAV format)
+  - ARM64 architecture support for Apple Silicon
+  - 30-second timeout protection
+  - Temporary file cleanup and error handling
+  - Up to 5000 character text limit
+
 - **Speech-to-Text (STT)**: Web Speech API integration for real-time voice input
   - Push-to-talk with spacebar control
   - Continuous and interim transcript support
   - Real-time audio level monitoring for visual feedback
   - Browser-based recognition (no server required)
   - Error handling for microphone permissions and network issues
-- **Text-to-Speech (TTS)**: Web Speech API for natural voice output
-  - Browser-based speech synthesis
+
+- **Text-to-Speech (TTS)**: Dual-mode TTS system
+  - Primary: Piper TTS via Python CLI for high-quality server-side synthesis
+  - Fallback: Web Speech API for browser-based synthesis
   - Voice selection support
   - Real-time frequency analysis for visualization
   - Beat detection for responsive UI animations
-- **Voice Visualization**: Animated orb component with canvas-based graphics
-  - State-aware color schemes and animations
+
+- **3D Particle Visualization**: Advanced Three.js particle system
+  - ParticleOrb component with 1000 particles
+  - Physics-based motion with velocity and forces
+  - Sphere boundary with collision detection
+  - State-based particle behavior (collapse/expand)
+  - Audio-reactive motion and beat pulses
+  - Smooth color transitions between states
+
+- **Voice Visualization**: Canvas-based 2D orb component
+  - VoiceOrb with state-aware color schemes
   - Audio-reactive pulsing and scaling
   - Smooth interpolation for natural motion
   - Click and keyboard controls
-- **API Endpoints**: Placeholder routes for future server-side integration
-  - `/api/stt` - Ready for Whisper/Ollama STT integration
-  - `/api/tts` - Ready for Piper/ElevenLabs TTS integration
+
+- **API Endpoints**:
+  - `/api/piper-tts` - Full Piper TTS integration (GET for voices, POST for synthesis)
+  - `/api/tts` - Web Speech API fallback route
+  - `/api/stt` - Placeholder for future Whisper integration
+
 - **Audio Analysis**: Real-time frequency and amplitude tracking
   - FFT-based spectrum analysis
   - Beat detection for speech emphasis
   - Configurable frequency range filtering
 
-### Memory & RAG System Addition
+### Memory & RAG System Addition (December 2025)
 - **Conversation Storage**: SQLite-based persistence for conversations and messages
 - **Vector Search**: ChromaDB integration for semantic search over conversation history
 - **Embeddings**: Ollama integration for generating vector embeddings
@@ -202,6 +263,15 @@ See `package.json` for available npm scripts:
   - `better-sqlite3` (v12.5.0) - SQLite database driver
   - `@types/better-sqlite3` (v7.6.13) - TypeScript definitions
   - `chromadb` (v3.2.0) - Vector database client
+
+### Additional Dependencies
+- **3D Graphics**: `three` (v0.160.0), `@types/three` (v0.182.0) - For ParticleOrb 3D visualization
+- **AI SDKs**:
+  - `ai` (v6.0.20) - Vercel AI SDK for LLM integration
+  - `openai` (v6.15.0) - OpenAI SDK for GPT models
+- **Python Runtime**: `pyodide` (v0.29.1) - Python in the browser for code execution
+- **Schema Validation**: `zod` (v4.3.5) - Runtime type checking and validation
+- **Math**: `mathjs` (v15.1.0) - Calculator tool implementation
 
 ### LLM API & Tool System Improvements
 - **Timeout Protection**: Added 30-second fetch timeouts with AbortController to prevent indefinite hanging
