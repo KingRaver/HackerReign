@@ -109,11 +109,12 @@ export async function POST(req: NextRequest) {
     console.log(`[Piper] Model: ${modelPath}`);
     console.log(`[Piper] Output: ${tempOutputFile}`);
 
-    // Execute Piper via Python
+    // Execute Piper via Python with performance optimizations
     // Using: echo "text" | python3 -m piper --model /path/to/model.onnx --output_file /tmp/output.wav
     return new Promise((resolve) => {
       try {
         // Spawn Python process with piper, forcing ARM64 architecture
+        // Add length_scale for faster speech and sentence_silence for snappier output
         const piperProcess = spawn('arch', [
           '-arm64',
           'python3',
@@ -122,7 +123,11 @@ export async function POST(req: NextRequest) {
           '--model',
           modelPath,
           '--output_file',
-          tempOutputFile as string
+          tempOutputFile as string,
+          '--length_scale',
+          '0.85', // Speed up speech by 15% (values < 1.0 = faster)
+          '--sentence_silence',
+          '0.2' // Reduce silence between sentences for faster output
         ]);
 
         let stderrOutput = '';
@@ -144,6 +149,7 @@ export async function POST(req: NextRequest) {
 
         // Handle process completion
         piperProcess.on('close', (code) => {
+          clearTimeout(timeoutId);
           console.log(`[Piper] Process exited with code ${code}`);
           console.log(`[Piper] stdout: ${stdoutOutput || '(empty)'}`);
           console.log(`[Piper] stderr: ${stderrOutput || '(empty)'}`);
@@ -205,6 +211,7 @@ export async function POST(req: NextRequest) {
 
         // Handle process errors
         piperProcess.on('error', (err) => {
+          clearTimeout(timeoutId);
           console.error('Failed to start Piper process:', err);
           resolve(
             NextResponse.json(
@@ -214,18 +221,19 @@ export async function POST(req: NextRequest) {
           );
         });
 
-        // Timeout after 30 seconds
-        setTimeout(() => {
+        // Timeout after 60 seconds (model loading can take time on first run)
+        const timeoutId = setTimeout(() => {
           if (piperProcess.exitCode === null) {
+            console.error('[Piper] Process timeout after 60s');
             piperProcess.kill();
             resolve(
               NextResponse.json(
-                { error: 'Piper TTS timeout' },
+                { error: 'Piper TTS timeout - try using a smaller voice model' },
                 { status: 504 }
               )
             );
           }
-        }, 30000);
+        }, 60000);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('Piper error:', errorMessage);

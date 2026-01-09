@@ -116,7 +116,7 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
         options: {
           num_thread: 12,
           num_gpu: 99,
-          num_ctx: 16384,
+          num_ctx: 8192, // Reduced from 16384 for faster processing
           repeat_penalty: 1.2,
           num_batch: 512,
           num_predict: 5555,
@@ -219,6 +219,10 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
       stream: false,
       tools: enableTools ? getTools() : undefined,
       tool_choice: enableTools ? 'auto' : undefined,
+      // @ts-ignore - Ollama-specific options
+      num_ctx: 8192, // Reduced from 16384 for faster processing
+      num_thread: 12,
+      num_gpu: 99,
     } as any); // Cast to any for Ollama-specific options compatibility
 
     let currentCompletion = completion;
