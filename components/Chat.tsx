@@ -196,7 +196,9 @@ export default function Chat() {
   const models = [
     { id: 'llama3.2:3b-instruct-q5_K_M', name: 'Llama 3.2', speed: '🚀' },
     { id: 'qwen2.5:7b-instruct-q5_K_M', name: 'Qwen 2.5', speed: '🏎️💨' },
-    { id: 'qwen2.5-coder:7b-instruct-q5_K_M', name: 'Vibe Coder', speed: '⚡' }
+    { id: 'qwen2.5-coder:7b-instruct-q5_K_M', name: 'Vibe Coder', speed: '⚡' },
+    { id: 'yi-coder:9b', name: 'Yi 9B', speed: '💎' },
+    { id: 'deepseek-coder-v2:16b', name: 'DS V2 16B', speed: '🧠' }
   ];
 
   return (
