@@ -17,6 +17,7 @@ export default function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [enableTools, setEnableTools] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [manualMode, setManualMode] = useState<'' | 'learning' | 'code-review' | 'expert'>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -100,7 +101,8 @@ export default function Chat() {
           model,
           messages: [...messages, userMsg],
           stream: !enableTools,
-          enableTools
+          enableTools,
+          manualModeOverride: manualMode || undefined
         })
       });
 
@@ -208,6 +210,18 @@ export default function Chat() {
           <p className="text-white/50 text-xs font-medium tracking-widest uppercase mt-2">Enterprise Intelligence</p>
         </div>
         <div className="flex flex-wrap gap-4 items-center">
+          {/* Mode Selector */}
+          <select
+            value={manualMode}
+            onChange={(e) => setManualMode(e.target.value as '' | 'learning' | 'code-review' | 'expert')}
+            className="px-5 py-3 rounded-2xl text-sm font-semibold bg-white/8 text-white border-2 border-cyan-light/30 hover:border-cyan-light/50 hover:bg-white/12 transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer backdrop-blur-sm"
+          >
+            <option value="" className="bg-slate-900 text-white font-medium">🤖 Auto-detect</option>
+            <option value="learning" className="bg-slate-900 text-white font-medium">🎓 Learning Mode</option>
+            <option value="code-review" className="bg-slate-900 text-white font-medium">👁️ Code Review</option>
+            <option value="expert" className="bg-slate-900 text-white font-medium">🧠 Expert Mode</option>
+          </select>
+
           {/* Model Dropdown */}
           <select
             value={model}
@@ -359,7 +373,7 @@ export default function Chat() {
 
       {/* Footer */}
       <div className="text-xs text-white/40 text-center pt-4 border-t border-cyan-light/5 font-medium tracking-widest">
-        🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages {voiceEnabled && '• 🎤 Voice Active'}
+        🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages {manualMode && `• ${manualMode === 'learning' ? '🎓' : manualMode === 'code-review' ? '👁️' : '🧠'} ${manualMode}`} {voiceEnabled && '• 🎤 Voice Active'}
       </div>
     </div>
   );

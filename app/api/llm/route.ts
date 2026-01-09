@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMemoryManager } from '../../lib/memory';
 import { getTools, executeTools } from '../../lib/tools';
+import { buildContextForLLMCall } from '../../lib/domain/contextBuilder';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest) {
       stream = true,
       enableTools = false,
       conversationId = null,
-      useMemory = true, // NEW: Enable memory augmentation
+      useMemory = true, // Enable memory augmentation
+      filePath, // Optional: file path for domain detection
+      manualModeOverride, // Optional: user-selected mode ('learning' | 'code-review' | 'expert')
     } = await req.json();
 
     const memory = getMemoryManager();
@@ -38,11 +41,21 @@ export async function POST(req: NextRequest) {
     }
 
     // ============================================================
-    // MEMORY AUGMENTATION: Retrieve past context (NEW)
+    // CONTEXT BUILDING: Build domain-aware system prompt
     // ============================================================
-    let systemPrompt = `You are Hacker Reign - a friendly coding expert. Respond in plain text only.
+    const lastUserMessage = messages[messages.length - 1];
 
-CRITICAL RULES:
+    // Build context with domain detection
+    const llmContext = await buildContextForLLMCall(
+      lastUserMessage?.content || '',
+      filePath,
+      manualModeOverride
+    );
+
+    // Get base system prompt from domain context, but add natural language rules
+    let systemPrompt = llmContext.systemPrompt + `
+
+CRITICAL OUTPUT FORMAT RULES:
 - NO markdown syntax (no *, #, \`, [], etc)
 - NO code blocks or backticks
 - NO lists with bullets or numbers
@@ -52,16 +65,22 @@ CRITICAL RULES:
 For code: write it inline like this -> print("hello") or useState(0)
 For explanations: use natural sentences with commas and periods
 
-Keep responses 1-3 sentences. Be direct and helpful.`;
+Keep responses 1-3 sentences per concept. Be direct and helpful.`;
 
+    let temperature = llmContext.temperature;
+    let maxTokens = llmContext.maxTokens;
+
+    // ============================================================
+    // MEMORY AUGMENTATION: Retrieve past context
+    // ============================================================
     // Augment prompt with memory if enabled and this is a user message
-    const lastUserMessage = messages[messages.length - 1];
     if (useMemory && lastUserMessage?.role === 'user') {
       try {
         const augmented = await memory.augmentWithMemory(lastUserMessage.content);
 
         // Only include context if we found relevant memories
         if (augmented.retrieved_context.length > 0) {
+          // Append memory context to the domain-aware system prompt
           systemPrompt = augmented.enhanced_system_prompt;
 
           // Log what was retrieved (for debugging)
@@ -109,8 +128,8 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
       const body: any = {
         model,
         messages: enhancedMessages,
-        max_tokens: 5555,
-        temperature: 0.3,
+        max_tokens: maxTokens,
+        temperature: temperature,
         top_p: 0.85,
         stream: true,
         options: {
@@ -119,7 +138,7 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
           num_ctx: 8192, // Reduced from 16384 for faster processing
           repeat_penalty: 1.2,
           num_batch: 512,
-          num_predict: 5555,
+          num_predict: maxTokens,
         },
       };
 
@@ -213,8 +232,8 @@ Keep responses 1-3 sentences. Be direct and helpful.`;
     const completion = await openai.chat.completions.create({
       model,
       messages: enhancedMessages,
-      max_tokens: 5555,
-      temperature: 0.3,
+      max_tokens: maxTokens,
+      temperature: temperature,
       top_p: 0.85,
       stream: false,
       tools: enableTools ? getTools() : undefined,

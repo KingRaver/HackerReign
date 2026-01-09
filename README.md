@@ -1,23 +1,39 @@
 # Hacker Reign
 
-A Next.js-powered chat application with local LLM integration via Ollama, featuring voice interaction, advanced tool support, persistent conversation memory, and semantic search capabilities.
+A Next.js-powered chat application with local LLM integration via Ollama, featuring domain-aware context detection, voice interaction with Piper TTS, advanced tool support, persistent conversation memory, and semantic search capabilities.
 
 ## Features
 
 ### Core Capabilities
 - **Local LLM Integration**: Connects to Ollama for private, on-device AI chat
-- **Voice Interaction**: Hands-free speech-to-text and text-to-speech using Web Speech API
+- **Domain Context System**: Automatic mode detection (Learning, Code Review, Expert) with domain-specific knowledge (Python, React, Next.js)
+- **Voice Interaction**: Seamless voice conversation with Piper TTS and Web Speech API
 - **Tool Support**: Built-in tools for weather queries, calculations (mathjs), and safe code execution (vm2 sandbox)
 - **Streaming Responses**: Real-time streaming for fast, responsive chat experience
 - **Modern Stack**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
 
+### Domain Context System
+- **Mode Detection**: Automatically detects interaction style from user input
+  - **Learning Mode** 🎓: Patient educator with examples and explanations
+  - **Code Review Mode** 👁️: Critical analyst focused on code quality
+  - **Expert Mode** 🧠: Deep technical discussions with trade-offs
+  - **Auto-detect** 🤖: Analyzes patterns to select best mode
+- **Domain Knowledge**: Specialized knowledge injection for your tech stack
+  - **Python Backend**: Asyncio, FastAPI, concurrency patterns
+  - **React Frontend**: Hooks, state management, performance
+  - **Next.js Fullstack**: App Router, Server Components, caching
+  - **Mixed**: Full-stack patterns, API design, authentication
+- **Dynamic Parameters**: Temperature and token limits optimized per mode
+- **Manual Override**: User can force specific mode via dropdown selector
+
 ### Voice Interaction System
 - **Speech-to-Text**: Real-time voice input using Web Speech API
-- **Text-to-Speech**: Natural voice output with browser-based synthesis
+- **Text-to-Speech**: High-quality server-side synthesis with Piper TTS Python integration
+- **Unified Voice Flow**: Seamless conversation loop with auto-resume after AI responses
 - **Push-to-Talk**: Hold spacebar or click the orb to speak
-- **Audio Visualization**: Real-time audio level monitoring with animated orb
+- **Audio Visualization**: 3D particle system and 2D orb with real-time audio reactivity
 - **Beat Detection**: Audio-reactive animations responding to speech emphasis
-- **No Dependencies**: Built entirely on native browser APIs
+- **State Machine**: Full conversation flow management (listening → thinking → speaking → auto-resume)
 
 ### Memory & RAG System
 - **Persistent Conversations**: SQLite-based storage for conversation history and messages
@@ -50,11 +66,22 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 
 2. **Node.js**: Version 20 or higher recommended
 
-3. **Modern Browser** (for voice features):
+3. **Python & Piper TTS** (for high-quality voice output):
+   ```bash
+   # Install Piper TTS
+   pip install piper-tts
+
+   # Verify installation
+   python3 -m piper --version
+
+   # Models will auto-download to ~/.piper/models/ on first use
+   ```
+
+4. **Modern Browser** (for voice features):
    - Chrome, Edge, or Safari with Web Speech API support
    - Microphone access for speech-to-text
 
-4. **ChromaDB** (Optional for RAG features):
+5. **ChromaDB** (Optional for RAG features):
    - The chromadb npm package is included in dependencies
    - For persistent vector storage, you can optionally run a ChromaDB server
    - See [ChromaDB docs](https://docs.trychroma.com/) for server setup
@@ -74,39 +101,64 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 3. **Open your browser:**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
-4. **Start chatting:**
+4. **Select your mode:**
+   - Choose from Auto-detect 🤖, Learning 🎓, Code Review 👁️, or Expert 🧠
+   - Mode dropdown is in the top-right header
+
+5. **Start chatting:**
    - Type messages or use voice input (hold spacebar to speak)
-   - The app auto-updates as you edit files
+   - Enable voice mode for seamless conversation
    - Try asking for weather, calculations, or code examples!
+   - The system will adapt its responses based on your selected mode and detected domain
 
 ## Voice Interaction
 
-The application features a complete voice interaction system with no external dependencies:
+The application features a complete voice interaction system with Piper TTS integration:
 
 ### Features
 - **Speech-to-Text**: Uses Web Speech API for real-time voice recognition
   - Hold **SPACEBAR** to activate push-to-talk
-  - Or **click the animated orb** to start listening
+  - Or **click the Voice ON button** to enable voice mode
   - Continuous and interim transcript support
   - Automatic silence detection
 
-- **Text-to-Speech**: Browser-based speech synthesis
+- **Text-to-Speech**: Dual-mode TTS system
+  - **Primary**: Piper TTS via Python CLI for high-quality server-side synthesis
+  - **Fallback**: Web Speech API for browser-based synthesis
   - Automatic voice output for AI responses
-  - Customizable voice selection
   - Real-time frequency analysis for visualization
 
-- **Voice Orb Visualization**:
-  - **Red pulsing**: Listening to your voice
-  - **Cyan pulsing**: AI is speaking
-  - **Teal idle**: Ready for input
+- **Unified Voice Flow**: Seamless conversation orchestration
+  - **State Machine**: idle → listening → processing → thinking → generating → speaking → auto-resume
+  - **Auto-resume**: Automatically starts listening 500ms after AI finishes speaking
+  - **Centralized State**: voiceStateManager with pub/sub pattern for cross-component sync
+  - **useVoiceFlow Hook**: Single hook combining STT, TTS, and flow control
+
+- **Visual Feedback**:
+  - **3D Particle Orb**: Three.js-based with 1000 particles, physics-based motion
+  - **2D Voice Orb**: Canvas-based with state-aware colors
+    - **Red pulsing**: Listening to your voice
+    - **Cyan pulsing**: AI is speaking
+    - **Teal idle**: Ready for input
   - Audio-reactive animations with beat detection
 
 ### Components
 Located in `app/lib/voice/`:
 - **useVoiceInput.ts**: Speech-to-text React hook
-- **useVoiceOutput.ts**: Text-to-speech React hook
+- **useVoiceOutput.ts**: Text-to-speech React hook with Piper integration
+- **useVoiceFlow.ts**: Unified voice flow orchestration hook
+- **voiceStateManager.ts**: Centralized state management with pub/sub
 - **audioAnalyzer.ts**: Real-time audio analysis and FFT processing
-- **VoiceOrb.tsx**: Canvas-based visualization component
+
+Located in `components/`:
+- **VoiceOrb.tsx**: Canvas-based 2D visualization
+- **ParticleOrb.tsx**: Three.js 3D particle visualization
+
+### API Endpoints
+- **POST /api/piper-tts**: Generate speech audio with Piper (WAV format)
+- **GET /api/piper-tts/voices**: List available Piper voice models
+- **POST /api/tts**: Browser-based synthesis fallback
+- **POST /api/stt**: Placeholder for future Whisper integration
 
 ### Browser Compatibility
 - **Chrome/Edge**: Full support (recommended)
@@ -188,11 +240,13 @@ If the memory/RAG system isn't working:
 
 ### Voice System Issues
 If voice features aren't working:
-1. **Microphone Permission**: Grant microphone access when prompted
-2. **Browser Support**: Use Chrome, Edge, or Safari (Firefox has limited support)
-3. **HTTPS Required**: Web Speech API requires HTTPS in production (localhost works)
-4. **Check Console**: Look for Web Speech API error messages
-5. **Test Audio**: Verify system microphone and speakers are working
+1. **Piper TTS**: Ensure Python and Piper are installed: `python3 -m piper --version`
+2. **Microphone Permission**: Grant microphone access when prompted
+3. **Browser Support**: Use Chrome, Edge, or Safari (Firefox has limited support)
+4. **HTTPS Required**: Web Speech API requires HTTPS in production (localhost works)
+5. **Check Console**: Look for Web Speech API or Piper error messages
+6. **Test Audio**: Verify system microphone and speakers are working
+7. **Voice Models**: First TTS request will download voice model to `~/.piper/models/`
 
 ## Development Scripts
 
@@ -206,13 +260,31 @@ npm run type-check  # Check TypeScript types
 
 ## Recent Updates
 
+### Domain Context System (v1.3.0)
+- **Context Detection**: Automatic mode and domain detection from user input
+  - Analyzes keywords for Learning, Code Review, or Expert mode signals
+  - Detects file types and tech stack (Python, TypeScript, React, Next.js)
+  - Identifies primary domain (backend, frontend, fullstack, mixed)
+  - Calculates complexity level and confidence scoring
+- **Mode System**: Three specialized interaction modes with tailored system prompts
+  - Learning Mode: Patient educator (temp 0.4, 8000 tokens)
+  - Code Review Mode: Critical analyst (temp 0.3, 6000 tokens)
+  - Expert Mode: Deep technical (temp 0.5, 7000 tokens)
+- **Domain Knowledge**: Context-aware knowledge injection
+  - Python async patterns, FastAPI, event loops
+  - React hooks, state management, performance
+  - Next.js App Router, Server Components, caching
+  - Full-stack API design, authentication, type sharing
+- **UI Integration**: Mode selector dropdown with auto-detect and manual override
+- **API Integration**: `buildContextForLLMCall()` generates complete system prompts
+
 ### Voice Interaction System (v1.2.0)
+- **Piper TTS Integration**: Server-side high-quality speech synthesis via Python CLI
+- **Unified Voice Flow**: Complete conversation orchestration with auto-resume
+- **State Management**: voiceStateManager with pub/sub pattern
 - **Speech-to-Text**: Web Speech API integration with push-to-talk (spacebar)
-- **Text-to-Speech**: Browser-based synthesis with voice selection
-- **Audio Visualization**: Real-time frequency analysis and beat detection
-- **Voice Orb Component**: Canvas-based animated orb with state-aware colors
-- **API Endpoints**: Placeholder routes for future server-side STT/TTS integration
-- **Zero Dependencies**: Built entirely on native browser APIs
+- **Audio Visualization**: 3D particle system (Three.js) and 2D orb (Canvas)
+- **API Endpoints**: `/api/piper-tts` for speech generation and voice listing
 
 ### Memory & RAG System (v1.1.0)
 - **SQLite Storage**: Persistent conversation and message storage

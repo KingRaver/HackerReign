@@ -17,22 +17,31 @@
 hackerreign/
 ├── app/
 │   ├── api/
-│   │   ├── llm/route.ts       # ← Ollama proxy (server) + tool support
+│   │   ├── llm/route.ts       # ← Ollama proxy + tools + domain context
 │   │   ├── stt/route.ts       # ← Speech-to-Text API (placeholder)
-│   │   └── tts/route.ts       # ← Text-to-Speech API (placeholder)
+│   │   ├── tts/route.ts       # ← Text-to-Speech API (placeholder)
+│   │   └── piper-tts/route.ts # ← Piper TTS Python integration
 │   ├── lib/
+│   │   ├── domain/            # ← Context detection & mode system
+│   │   │   ├── contextDetector.ts
+│   │   │   ├── modeDefinitions.ts
+│   │   │   ├── domainKnowledge.ts
+│   │   │   └── contextBuilder.ts
 │   │   ├── memory/            # ← RAG & conversation storage
 │   │   │   ├── storage/       # SQLite persistence
 │   │   │   └── rag/           # ChromaDB + embeddings
-│   │   ├── voice/             # ← STT/TTS Web Speech API
+│   │   ├── voice/             # ← STT/TTS with Piper integration
 │   │   │   ├── useVoiceInput.ts
 │   │   │   ├── useVoiceOutput.ts
+│   │   │   ├── useVoiceFlow.ts
+│   │   │   ├── voiceStateManager.ts
 │   │   │   └── audioAnalyzer.ts
 │   │   └── tools/             # LLM tool handlers
 │   └── page.tsx              # ← <Chat /> wrapper
 ├── components/
-│   ├── Chat.tsx              # ← UI + model selector
-│   └── VoiceOrb.tsx          # ← Voice visualization
+│   ├── Chat.tsx              # ← UI + model + mode selector
+│   ├── VoiceOrb.tsx          # ← 2D voice visualization
+│   └── ParticleOrb.tsx       # ← 3D particle visualization
 ├── package.json              # openai, next, react, tailwind, chromadb, better-sqlite3
 ├── tsconfig.json             # @/* paths: ["./*"]
 └── tailwind.config.ts
@@ -422,14 +431,14 @@ docker-compose down
 | Feature | Status | Tech Stack | Dependencies |
 |---------|--------|------------|--------------|
 | **LLM Chat** | ✅ Production | Ollama + OpenAI SDK | `openai` |
+| **Domain Context** | ✅ Production | Mode detection + domain knowledge | Built-in |
 | **Tool Support** | ✅ Production | mathjs, vm2 | `mathjs`, `vm2` |
 | **Memory/RAG** | ✅ Production | SQLite + ChromaDB | `better-sqlite3`, `chromadb` |
 | **Voice STT** | ✅ Production | Web Speech API | Native browser API |
-| **Voice TTS** | ✅ Production | Web Speech API | Native browser API |
-| **Audio Viz** | ✅ Production | Canvas + FFT | Native Web Audio API |
+| **Voice TTS** | ✅ Production | Piper TTS + Web Speech | `python3 -m piper` |
+| **Audio Viz** | ✅ Production | Canvas + Three.js | `three` |
 | **Docker** | 🔄 Optional | Docker Compose | `docker`, `docker-compose` |
 | **Server STT** | 📋 Planned | Whisper/Ollama | TBD |
-| **Server TTS** | 📋 Planned | Piper/ElevenLabs | TBD |
 
 ---
 
@@ -480,5 +489,69 @@ ollama pull nomic-embed-text                 # 384-dim embeddings
 
 ---
 
+## 🎓 **DOMAIN CONTEXT SYSTEM**
+
+### **Architecture**
+```
+User Input + Mode Selection
+         ↓
+Context Detector (mode, domain, complexity)
+         ↓
+Mode System (learning/code-review/expert)
+         ↓
+Domain Knowledge (Python/React/Next.js/Mixed)
+         ↓
+Context Builder (complete system prompt)
+         ↓
+LLM with tailored context
+```
+
+### **Interaction Modes**
+| Mode | Icon | Temperature | Tokens | Focus |
+|------|------|-------------|--------|-------|
+| **Learning** | 🎓 | 0.4 | 8000 | Patient educator, examples, WHY |
+| **Code Review** | 👁️ | 0.3 | 6000 | Critical analyst, improvements |
+| **Expert** | 🧠 | 0.5 | 7000 | Deep technical, trade-offs |
+| **Auto-detect** | 🤖 | Dynamic | Dynamic | Analyzes input patterns |
+
+### **Domains**
+- **python-backend**: Asyncio, FastAPI, concurrency, event loops
+- **react-frontend**: Hooks, state management, performance, memoization
+- **nextjs-fullstack**: App Router, Server Components, caching, SSR/SSG
+- **mixed**: Full-stack patterns, API design, type sharing, authentication
+
+### **Usage in Chat.tsx**
+```typescript
+// User selects mode from dropdown (or leaves on Auto-detect)
+const [manualMode, setManualMode] = useState<'' | 'learning' | 'code-review' | 'expert'>('');
+
+// Passed to API on every request
+fetch('/api/llm', {
+  body: JSON.stringify({
+    messages,
+    manualModeOverride: manualMode || undefined
+  })
+});
+```
+
+### **API Integration**
+```typescript
+// app/api/llm/route.ts
+import { buildContextForLLMCall } from '../../lib/domain/contextBuilder';
+
+const llmContext = await buildContextForLLMCall(
+  userMessage,
+  filePath,        // Optional: for domain detection
+  manualModeOverride  // User-selected mode
+);
+
+// Returns:
+// - systemPrompt: Complete prompt with mode + domain knowledge
+// - temperature: 0.3-0.5 based on mode
+// - maxTokens: 6000-8000 based on mode
+```
+
+---
+
 **Last Updated:** Jan 9, 2026
-**Version:** 1.2.0 (Voice + RAG + Docker Ready)
+**Version:** 1.3.0 (Domain Context + Voice + RAG)

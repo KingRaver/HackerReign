@@ -17,6 +17,11 @@ hackerreign/
 │   │   └── tts/                  # Text-to-Speech endpoint
 │   │       └── route.ts          # TTS API (client-side synthesis instructions)
 │   ├── lib/                      # Shared utilities and libraries
+│   │   ├── domain/               # Domain context detection system
+│   │   │   ├── contextDetector.ts  # Detects mode, file type, domain, complexity
+│   │   │   ├── modeDefinitions.ts  # Interaction mode system prompts
+│   │   │   ├── domainKnowledge.ts  # Domain-specific knowledge base
+│   │   │   └── contextBuilder.ts   # Orchestrates detection and prompt building
 │   │   ├── memory/               # Memory and RAG system
 │   │   │   ├── index.ts          # Storage singleton exports
 │   │   │   ├── schemas.ts        # TypeScript schemas for conversations/messages
@@ -88,6 +93,33 @@ Server-side API endpoints. Currently hosts the LLM integration with tool support
 ### `/app/lib`
 Shared utilities and libraries used across the application.
 
+#### `/app/lib/domain`
+Domain-aware context detection and system prompt generation:
+- **contextDetector.ts** - Analyzes user input to detect interaction mode, file type, domain, and complexity
+- **modeDefinitions.ts** - Three interaction modes with specialized system prompts (learning, code-review, expert)
+- **domainKnowledge.ts** - Domain-specific knowledge base for Python backend, React frontend, Next.js fullstack, and mixed projects
+- **contextBuilder.ts** - Orchestrates detection and builds complete system prompts with domain knowledge injection
+
+**Features:**
+- Automatic mode detection from user input (learning, code review, expert)
+- Domain detection from file paths and code patterns (Python, React, Next.js, mixed)
+- Dynamic temperature and token limits based on mode
+- Domain-specific knowledge injection (asyncio patterns, React hooks, API design, etc.)
+- Manual mode override support for user preference
+- Complexity analysis (simple, moderate, complex)
+- Confidence scoring for detection quality
+
+**Interaction Modes:**
+- **Learning Mode** (🎓) - Patient educator with examples and analogies (temp: 0.4, 8000 tokens)
+- **Code Review Mode** (👁️) - Critical analyst focused on quality improvements (temp: 0.3, 6000 tokens)
+- **Expert Mode** (🧠) - Deep technical discussion with trade-offs (temp: 0.5, 7000 tokens)
+
+**Domains:**
+- **python-backend** - Async/await, asyncio, FastAPI, concurrency patterns
+- **react-frontend** - React hooks, state management, performance optimization
+- **nextjs-fullstack** - App Router, Server Components, API routes, SSR/SSG
+- **mixed** - Full-stack architecture spanning Python backend and React/Next.js frontend
+
 #### `/app/lib/memory`
 Memory and RAG (Retrieval-Augmented Generation) system:
 - **storage/** - SQLite-based conversation and message persistence
@@ -157,8 +189,10 @@ LLM tool integration system:
 Reusable React components used across the application:
 - **Chat.tsx** - Main chat interface with message history, input, and voice flow integration
   - Integrates with useVoiceFlow for voice conversation
+  - Mode selector dropdown for manual mode override (Auto-detect, Learning, Code Review, Expert)
   - Subscribes to voice state changes for UI updates
   - Handles LLM responses and auto-TTS playback
+  - Passes selected mode to API for context-aware responses
 - **VoiceOrb.tsx** - Canvas-based 2D animated orb for voice visualization
   - Real-time audio level visualization with pulsing effects
   - State-based color schemes (listening: red, speaking: cyan, idle: teal)
@@ -197,6 +231,52 @@ See `package.json` for available npm scripts:
 - `npm run type-check` - Check TypeScript types
 
 ## Recent Updates
+
+### Domain Context System (January 2026)
+- **Context Detection**: Automatic mode and domain detection from user input
+  - Analyzes user input for learning, code review, or expert mode signals
+  - Detects file types (Python, TypeScript, React, Next.js) from paths and patterns
+  - Identifies primary domain (backend, frontend, fullstack, mixed)
+  - Calculates complexity level (simple, moderate, complex)
+  - Confidence scoring for detection quality (0-1 scale)
+
+- **Mode System**: Three specialized interaction modes with tailored system prompts
+  - **Learning Mode** (🎓) - Patient educator focusing on "why" with examples
+  - **Code Review Mode** (👁️) - Critical analyst prioritizing code quality
+  - **Expert Mode** (🧠) - Deep technical discussion with trade-offs and edge cases
+  - Dynamic temperature and token limits per mode
+  - Mode-specific response structures and tone
+
+- **Domain Knowledge**: Context-aware knowledge injection
+  - **Python Backend** - Asyncio, FastAPI, concurrency patterns, event loops
+  - **React Frontend** - Hooks lifecycle, state management, memoization, performance
+  - **Next.js Fullstack** - App Router, Server Components, caching strategies
+  - **Mixed Domain** - Full-stack patterns, API design, type sharing, authentication
+  - Best practices and common pitfalls for each domain
+  - Automatic injection into system prompts based on detection
+
+- **UI Integration**: Mode selector in Chat.tsx
+  - Dropdown with 4 options: Auto-detect (🤖), Learning (🎓), Code Review (👁️), Expert (🧠)
+  - Manual mode override capability
+  - Footer status indicator showing active mode
+  - Seamless integration with existing voice and tool systems
+
+- **API Integration**: LLM route enhanced with context building
+  - `buildContextForLLMCall()` function for every request
+  - Accepts `filePath` and `manualModeOverride` parameters
+  - Dynamic system prompt generation with domain knowledge
+  - Natural language output rules preserved
+  - Memory augmentation compatibility maintained
+
+**Example Flow:**
+1. User selects "Learning Mode" or leaves on "Auto-detect"
+2. User types: "Can you explain async/await in Python?"
+3. System detects: Learning mode (if auto) + Python backend domain
+4. Context builder generates system prompt with:
+   - Learning mode instructions (patient teacher style)
+   - Python async knowledge (asyncio, event loops, coroutines)
+   - Natural language formatting rules
+5. LLM responds with educational explanation tailored to Python context
 
 ### Voice Interaction System - Full Piper TTS Integration (January 2026)
 - **Unified Voice Flow**: Complete conversation orchestration with auto-resume
