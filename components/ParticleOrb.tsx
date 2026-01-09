@@ -246,7 +246,9 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
       renderer.dispose();
       geometry.dispose();
       material.dispose();
-      containerRef.current?.removeChild(renderer.domElement);
+      if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
+        containerRef.current.removeChild(renderer.domElement);
+      }
     };
   }, [state, audioLevel, beat]);
 

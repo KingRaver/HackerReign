@@ -105,6 +105,10 @@ export async function POST(req: NextRequest) {
     const tempDir = os.tmpdir();
     tempOutputFile = path.join(tempDir, `piper-${Date.now()}.wav`);
 
+    console.log(`[Piper] Generating speech for text (${text.length} chars): "${text.substring(0, 50)}..."`);
+    console.log(`[Piper] Model: ${modelPath}`);
+    console.log(`[Piper] Output: ${tempOutputFile}`);
+
     // Execute Piper via Python
     // Using: echo "text" | python3 -m piper --model /path/to/model.onnx --output_file /tmp/output.wav
     return new Promise((resolve) => {
@@ -122,10 +126,16 @@ export async function POST(req: NextRequest) {
         ]);
 
         let stderrOutput = '';
+        let stdoutOutput = '';
 
         // Write text to stdin
         piperProcess.stdin.write(text);
         piperProcess.stdin.end();
+
+        // Capture stdout for debugging
+        piperProcess.stdout.on('data', (data) => {
+          stdoutOutput += data.toString();
+        });
 
         // Capture stderr for debugging
         piperProcess.stderr.on('data', (data) => {
@@ -134,11 +144,16 @@ export async function POST(req: NextRequest) {
 
         // Handle process completion
         piperProcess.on('close', (code) => {
+          console.log(`[Piper] Process exited with code ${code}`);
+          console.log(`[Piper] stdout: ${stdoutOutput || '(empty)'}`);
+          console.log(`[Piper] stderr: ${stderrOutput || '(empty)'}`);
+
           if (code !== 0) {
-            console.error('Piper error:', stderrOutput);
+            console.error('[Piper] Process failed with code:', code);
+            console.error('[Piper] stderr:', stderrOutput);
             resolve(
               NextResponse.json(
-                { error: `Piper TTS failed: ${stderrOutput}` },
+                { error: `Piper TTS failed with code ${code}: ${stderrOutput}` },
                 { status: 500 }
               )
             );
@@ -147,6 +162,7 @@ export async function POST(req: NextRequest) {
 
           // Read the generated audio file
           if (!fs.existsSync(tempOutputFile as string)) {
+            console.error(`[Piper] Audio file not found at: ${tempOutputFile}`);
             resolve(
               NextResponse.json(
                 { error: 'Audio file was not generated' },
@@ -158,6 +174,7 @@ export async function POST(req: NextRequest) {
 
           try {
             const audioBuffer = fs.readFileSync(tempOutputFile as string);
+            console.log(`[Piper] Generated audio: ${audioBuffer.length} bytes`);
 
             // Clean up temp file
             fs.unlinkSync(tempOutputFile as string);
@@ -173,6 +190,7 @@ export async function POST(req: NextRequest) {
               }
             });
 
+            console.log('[Piper] Sending audio response');
             resolve(response);
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Unknown error';

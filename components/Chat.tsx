@@ -1,9 +1,8 @@
 // components/Chat.tsx
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import VoiceOrb from './VoiceOrb';
-import { useVoiceInput } from '@/app/lib/voice/useVoiceInput';
-import { useVoiceOutput } from '@/app/lib/voice/useVoiceOutput';
+import ParticleOrb from './ParticleOrb';
+import { useVoiceFlow } from '@/app/lib/voice/useVoiceFlow';
 
 interface Message {
   id: string;
@@ -16,64 +15,27 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [partialContent, setPartialContent] = useState('');
   const [enableTools, setEnableTools] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const autoResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Voice input hook
-  const voiceInput = useVoiceInput({
+  // Voice flow hook - handles STT, TTS, and seamless conversation loop
+  const voice = useVoiceFlow({
     onTranscript: (text) => {
-      setInput(text);
-      // Auto-send after transcript
-      setTimeout(() => {
-        sendMessage(text);
-      }, 500);
-    },
-    onListeningChange: (isListening) => {
-      // Handle UI updates if needed
+      console.log('[Chat] Voice transcript received:', text);
+      // Auto-send transcript to LLM
+      handleSendMessage(text);
     },
     onError: (error) => {
-      console.error('Voice input error:', error);
-      // Could show error toast here
+      console.error('[Chat] Voice error:', error);
+      // Error already displayed in voice hook state
+    },
+    onStateChange: (state) => {
+      console.log('[Chat] Voice state changed:', state);
+      // For orb visualization updates
     }
   });
-
-  // Voice output hook
-  const [audioFrequency, setAudioFrequency] = useState({ beat: 0, amplitude: 0 });
-  const voiceOutput = useVoiceOutput({
-    onFrequencyAnalysis: (data) => {
-      setAudioFrequency({
-        beat: data.beat,
-        amplitude: data.amplitude
-      });
-    },
-    onPlaybackEnd: () => {
-      // Auto-resume listening after TTS finishes
-      autoResumeListening();
-    },
-    onError: (error) => {
-      console.error('Voice output error:', error);
-      // Could show error toast here
-    }
-  });
-
-  /**
-   * Auto-resume listening after TTS finishes (with 0.5s delay)
-   */
-  const autoResumeListening = useCallback(() => {
-    // Clear any pending timeout
-    if (autoResumeTimeoutRef.current) {
-      clearTimeout(autoResumeTimeoutRef.current);
-    }
-
-    // Small delay to give user time to think
-    autoResumeTimeoutRef.current = setTimeout(() => {
-      voiceInput.startListening();
-    }, 500);
-  }, [voiceInput]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,29 +43,56 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, partialContent, scrollToBottom]);
+  }, [messages, isLoading, scrollToBottom]);
 
-  // Cleanup auto-resume timeout on unmount
+  // Store voice functions in refs to avoid infinite loops
+  const voiceRef = useRef(voice);
+
+  useEffect(() => {
+    voiceRef.current = voice;
+  }, [voice]);
+
+  // Handle voice toggle
+  useEffect(() => {
+    if (voiceEnabled) {
+      console.log('[Chat] Voice enabled - starting listening');
+      voiceRef.current.startListening();
+    } else {
+      console.log('[Chat] Voice disabled - stopping');
+      voiceRef.current.stopListening();
+    }
+  }, [voiceEnabled]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (autoResumeTimeoutRef.current) {
-        clearTimeout(autoResumeTimeoutRef.current);
-      }
+      console.log('[Chat] Cleanup - stopping voice');
+      voiceRef.current.stopListening();
     };
   }, []);
 
-  const sendMessage = async (textToSend?: string) => {
+  /**
+   * Send message to LLM (called by text input or voice transcript)
+   */
+  const handleSendMessage = async (textToSend?: string) => {
     const messageText = textToSend || input;
     if (!messageText.trim() || isLoading) return;
 
     const userId = Date.now().toString();
     const userMsg: Message = { id: userId, role: 'user', content: messageText };
+
+    // Update messages and clear input
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
-    setPartialContent('');
 
     try {
+      // Notify voice system that LLM is thinking
+      if (voiceEnabled) {
+        voice.setThinking();
+      }
+
+      // Send to LLM API
       const response = await fetch('/api/llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,22 +109,19 @@ export default function Chat() {
       const aiId = (Date.now() + 1).toString();
 
       if (enableTools) {
-        // Handle non-streaming response (when tools are enabled)
+        // Non-streaming response (tools enabled)
         const data = await response.json();
         const content = data.content || '';
         const aiMsg: Message = { id: aiId, role: 'assistant', content };
+
         setMessages(prev => [...prev, aiMsg]);
 
-        // Play response in voice mode with auto-resume
-        if (voiceMode) {
-          try {
-            await voiceOutput.speak(content);
-          } catch (error) {
-            console.error('TTS error:', error);
-          }
+        // Speak response if voice enabled
+        if (voiceEnabled && content) {
+          await voice.speakResponse(content, true); // true = auto-resume after speaking
         }
       } else {
-        // Handle streaming response (when tools are disabled)
+        // Streaming response (tools disabled)
         const aiMsg: Message = { id: aiId, role: 'assistant', content: '' };
         setMessages(prev => [...prev, aiMsg]);
 
@@ -169,7 +155,7 @@ export default function Chat() {
                       ));
                     }
                   } catch {
-                    // Skip invalid JSON
+                    // Skip invalid JSON lines
                   }
                 }
               }
@@ -178,19 +164,15 @@ export default function Chat() {
             reader.releaseLock();
           }
 
-          // Play full response in voice mode with auto-resume
-          if (voiceMode) {
-            try {
-              await voiceOutput.speak(fullContent);
-            } catch (error) {
-              console.error('TTS error:', error);
-            }
+          // Speak full response if voice enabled
+          if (voiceEnabled && fullContent) {
+            await voice.speakResponse(fullContent, true); // true = auto-resume after speaking
           }
         }
       }
 
     } catch (error: unknown) {
-      console.error('Chat error:', error);
+      console.error('[Chat] Send message error:', error);
       const errorMsg: Message = {
         id: Date.now().toString(),
         role: 'assistant',
@@ -205,7 +187,7 @@ export default function Chat() {
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSendMessage();
     }
   };
 
@@ -254,15 +236,15 @@ export default function Chat() {
 
           {/* Voice Mode Toggle */}
           <button
-            onClick={() => setVoiceMode(!voiceMode)}
+            onClick={() => setVoiceEnabled(!voiceEnabled)}
             className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all duration-200 shadow-lg hover:shadow-lg flex items-center gap-2 border-2 ${
-              voiceMode
+              voiceEnabled
                 ? 'bg-linear-to-r from-red-500/95 to-pink-500/95 text-white shadow-red-500/40 border-red-500/40 hover:shadow-red-500/60 hover:scale-105'
                 : 'bg-white/8 text-white/90 hover:bg-white/12 border-white/20 hover:border-white/40 backdrop-blur-sm'
             }`}
           >
-            <span className="text-lg">{voiceMode ? '🎙️' : '💬'}</span>
-            <span className="font-bold">{voiceMode ? 'Voice ON' : 'Text Mode'}</span>
+            <span className="text-lg">{voiceEnabled ? '🎙️' : '💬'}</span>
+            <span className="font-bold">{voiceEnabled ? 'Voice ON' : 'Text Mode'}</span>
           </button>
         </div>
       </div>
@@ -312,7 +294,7 @@ export default function Chat() {
                         <div className="w-2.5 h-2.5 bg-yellow/70 rounded-full animate-bounce [animation-delay:0.2s]" />
                       </div>
                       <span className="text-xs font-medium text-white/70 ml-1">
-                        {voiceMode ? 'Speaking...' : 'Thinking...'} ({model.split(':')[0]})
+                        {voiceEnabled ? 'Listening...' : 'Thinking...'} ({model.split(':')[0]})
                       </span>
                     </div>
                   </div>
@@ -326,33 +308,29 @@ export default function Chat() {
       </div>
 
       {/* Input Area - Voice or Text Mode */}
-      {voiceMode ? (
-        // Voice Mode
+      {voiceEnabled ? (
+        // Voice Mode - Seamless Conversation Loop
         <div className="flex flex-col items-center gap-6 py-6">
-          <VoiceOrb
-            isListening={voiceInput.isListening}
-            isPlaying={voiceOutput.isPlaying}
-            audioLevel={voiceInput.audioLevel}
-            beat={audioFrequency.beat}
-            onToggleListening={() => {
-              if (voiceInput.isListening) {
-                voiceInput.stopListening();
-              } else {
-                voiceInput.startListening();
-              }
+          <ParticleOrb
+            state={voice.state === 'auto-resuming' ? 'listening' : (voice.state as any)}
+            audioLevel={voice.audioLevel}
+            beat={voice.audioFrequency.beat}
+            disabled={isLoading || !voiceEnabled}
+            onClick={() => {
+              // Toggle voice on/off via the button
+              setVoiceEnabled(!voiceEnabled);
             }}
-            disabled={isLoading}
           />
 
-          {voiceInput.error && (
+          {voice.error && (
             <div className="text-center text-red-400 text-sm font-medium">
-              {voiceInput.error}
+              {voice.error}
             </div>
           )}
 
-          {voiceOutput.error && (
-            <div className="text-center text-red-400 text-sm font-medium">
-              {voiceOutput.error}
+          {voice.state === 'auto-resuming' && (
+            <div className="text-center text-cyan-light/60 text-xs font-medium animate-pulse">
+              Ready to listen...
             </div>
           )}
         </div>
@@ -370,7 +348,7 @@ export default function Chat() {
             disabled={isLoading}
           />
           <button
-            onClick={() => sendMessage()}
+            onClick={() => handleSendMessage()}
             disabled={isLoading || !input.trim()}
             className="px-8 py-5 bg-linear-to-r from-yellow/95 to-peach/95 text-gray-900 font-bold rounded-xl shadow-lg hover:shadow-yellow/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap hover:scale-105 active:scale-95 text-sm tracking-wide"
           >
@@ -381,7 +359,7 @@ export default function Chat() {
 
       {/* Footer */}
       <div className="text-xs text-white/40 text-center pt-4 border-t border-cyan-light/5 font-medium tracking-widest">
-        🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages {voiceMode && '• Voice Active'}
+        🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages {voiceEnabled && '• 🎤 Voice Active'}
       </div>
     </div>
   );

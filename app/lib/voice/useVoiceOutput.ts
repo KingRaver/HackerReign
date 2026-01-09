@@ -143,9 +143,12 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
     async (text: string): Promise<void> => {
       return new Promise((resolve, reject) => {
         if (!text.trim()) {
+          console.log('[VoiceOutput] Empty text, skipping speech');
           resolve();
           return;
         }
+
+        console.log(`[VoiceOutput] Starting TTS for text (${text.length} chars): "${text.substring(0, 50)}..."`);
 
         // Cancel any previous request
         if (abortControllerRef.current) {
@@ -162,6 +165,8 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
               progress: 0
             }));
 
+            console.log('[VoiceOutput] Calling Piper TTS API...');
+
             // Call Piper TTS API endpoint
             const response = await fetch('/api/piper-tts', {
               method: 'POST',
@@ -170,6 +175,8 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
               signal: abortControllerRef.current?.signal
             });
 
+            console.log(`[VoiceOutput] TTS API response: ${response.status} ${response.statusText}`);
+
             if (!response.ok) {
               const errorData = await response.json().catch(() => ({}));
               throw new Error(errorData.error || `HTTP ${response.status}`);
@@ -177,6 +184,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
 
             // Get audio blob
             const audioBlob = await response.blob();
+            console.log(`[VoiceOutput] Received audio blob: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
 
             if (audioBlob.size === 0) {
               throw new Error('Empty audio response from Piper TTS');
@@ -184,6 +192,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
 
             // Create blob URL and play
             const audioUrl = URL.createObjectURL(audioBlob);
+            console.log('[VoiceOutput] Created audio URL, preparing to play...');
 
             if (!audioElementRef.current) {
               throw new Error('Audio element not initialized');
@@ -192,23 +201,29 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
             const audioElement = audioElementRef.current;
             audioElement.src = audioUrl;
 
+            console.log('[VoiceOutput] Starting audio playback...');
+
             // Play audio
             const playPromise = audioElement.play();
 
             if (playPromise !== undefined) {
               playPromise
                 .then(() => {
+                  console.log('[VoiceOutput] Audio playback started successfully');
                   setState(prev => ({
                     ...prev,
                     isGenerating: false
                   }));
                 })
                 .catch(err => {
+                  console.error('[VoiceOutput] Play promise rejected:', err);
                   // Ignore abort errors (user cancelled)
                   if (err.name !== 'AbortError') {
                     throw err;
                   }
                 });
+            } else {
+              console.warn('[VoiceOutput] play() did not return a promise');
             }
 
             // Wait for audio to finish
