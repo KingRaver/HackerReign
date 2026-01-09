@@ -1,13 +1,13 @@
 # Hacker Reign
 
-A Next.js-powered chat application with local LLM integration via Ollama, featuring domain-aware context detection, voice interaction with Piper TTS, advanced tool support, persistent conversation memory, and semantic search capabilities.
+A Next.js-powered chat application with local LLM integration via Ollama, featuring domain-aware context detection, voice interaction with Whisper STT and Piper TTS, advanced tool support, persistent conversation memory, and semantic search capabilities.
 
 ## Features
 
 ### Core Capabilities
 - **Local LLM Integration**: Connects to Ollama for private, on-device AI chat
 - **Domain Context System**: Automatic mode detection (Learning, Code Review, Expert) with domain-specific knowledge (Python, React, Next.js)
-- **Voice Interaction**: Seamless voice conversation with Piper TTS and Web Speech API
+- **Voice Interaction**: Seamless voice conversation with Whisper STT and Piper TTS
 - **Tool Support**: Built-in tools for weather queries, calculations (mathjs), and safe code execution (vm2 sandbox)
 - **Streaming Responses**: Real-time streaming for fast, responsive chat experience
 - **Modern Stack**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
@@ -27,7 +27,7 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 - **Manual Override**: User can force specific mode via dropdown selector
 
 ### Voice Interaction System
-- **Speech-to-Text**: Real-time voice input using Web Speech API
+- **Speech-to-Text**: Local Whisper transcription for accurate, private voice recognition
 - **Text-to-Speech**: High-quality server-side synthesis with Piper TTS Python integration
 - **Unified Voice Flow**: Seamless conversation loop with auto-resume after AI responses
 - **Push-to-Talk**: Hold spacebar or click the orb to speak
@@ -66,20 +66,26 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 
 2. **Node.js**: Version 20 or higher recommended
 
-3. **Python & Piper TTS** (for high-quality voice output):
+3. **Python, Whisper & Piper TTS** (for voice features):
    ```bash
-   # Install Piper TTS
+   # Install Whisper (for speech-to-text)
+   pip3 install openai-whisper
+
+   # Download Whisper model (330MB - one-time setup)
+   whisper --model small --task transcribe /dev/null
+
+   # Install Piper TTS (for text-to-speech)
    pip install piper-tts
 
-   # Verify installation
+   # Verify Piper installation
    python3 -m piper --version
 
-   # Models will auto-download to ~/.piper/models/ on first use
+   # Piper voice models will auto-download to ~/.piper/models/ on first use
    ```
 
 4. **Modern Browser** (for voice features):
-   - Chrome, Edge, or Safari with Web Speech API support
-   - Microphone access for speech-to-text
+   - Chrome, Edge, or Safari for microphone access
+   - Microphone permission required for voice input
 
 5. **ChromaDB** (Optional for RAG features):
    - The chromadb npm package is included in dependencies
@@ -113,18 +119,21 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 
 ## Voice Interaction
 
-The application features a complete voice interaction system with Piper TTS integration:
+The application features a complete voice interaction system with Whisper and Piper integration:
 
 ### Features
-- **Speech-to-Text**: Uses Web Speech API for real-time voice recognition
+- **Speech-to-Text**: Local Whisper transcription for accurate, private voice recognition
   - Hold **SPACEBAR** to activate push-to-talk
   - Or **click the Voice ON button** to enable voice mode
-  - Continuous and interim transcript support
-  - Automatic silence detection
+  - Records audio using browser MediaRecorder API
+  - Automatic silence detection (3 seconds default)
+  - Sends audio to local Whisper CLI for transcription
+  - Uses `small` model (330MB) for optimal speed/accuracy balance
 
-- **Text-to-Speech**: Dual-mode TTS system
-  - **Primary**: Piper TTS via Python CLI for high-quality server-side synthesis
-  - **Fallback**: Web Speech API for browser-based synthesis
+- **Text-to-Speech**: High-quality Piper TTS synthesis
+  - Server-side speech generation via Piper Python CLI
+  - High-quality ONNX-based neural voice models
+  - Voice models stored in `~/.piper/models/`
   - Automatic voice output for AI responses
   - Real-time frequency analysis for visualization
 
@@ -155,15 +164,14 @@ Located in `components/`:
 - **ParticleOrb.tsx**: Three.js 3D particle visualization
 
 ### API Endpoints
+- **POST /api/stt**: Transcribe audio using local Whisper CLI (requires openai-whisper)
 - **POST /api/piper-tts**: Generate speech audio with Piper (WAV format)
 - **GET /api/piper-tts/voices**: List available Piper voice models
-- **POST /api/tts**: Browser-based synthesis fallback
-- **POST /api/stt**: Placeholder for future Whisper integration
 
 ### Browser Compatibility
 - **Chrome/Edge**: Full support (recommended)
 - **Safari**: Full support on macOS/iOS
-- **Firefox**: Limited Web Speech API support
+- **Firefox**: Full support (uses MediaRecorder API for audio capture)
 
 ## Available Tools
 
@@ -240,13 +248,16 @@ If the memory/RAG system isn't working:
 
 ### Voice System Issues
 If voice features aren't working:
-1. **Piper TTS**: Ensure Python and Piper are installed: `python3 -m piper --version`
-2. **Microphone Permission**: Grant microphone access when prompted
-3. **Browser Support**: Use Chrome, Edge, or Safari (Firefox has limited support)
-4. **HTTPS Required**: Web Speech API requires HTTPS in production (localhost works)
-5. **Check Console**: Look for Web Speech API or Piper error messages
+1. **Whisper STT**: Ensure Whisper is installed: `pip3 install openai-whisper`
+   - Download model: `whisper --model small --task transcribe /dev/null`
+   - Check console for `[STT]` error messages
+2. **Piper TTS**: Ensure Python and Piper are installed: `python3 -m piper --version`
+   - Voice models auto-download to `~/.piper/models/` on first use
+3. **Microphone Permission**: Grant microphone access when prompted
+4. **Browser Support**: Use Chrome, Edge, or Safari (Firefox supported)
+5. **Check Console**: Look for `[VoiceInput]`, `[VoiceOutput]`, or `[Piper]` error messages
 6. **Test Audio**: Verify system microphone and speakers are working
-7. **Voice Models**: First TTS request will download voice model to `~/.piper/models/`
+7. **Whisper Path**: Set `WHISPER_PATH` environment variable if whisper is not in PATH
 
 ## Development Scripts
 
@@ -279,12 +290,13 @@ npm run type-check  # Check TypeScript types
 - **API Integration**: `buildContextForLLMCall()` generates complete system prompts
 
 ### Voice Interaction System (v1.2.0)
+- **Whisper STT Integration**: Local speech-to-text transcription via Whisper CLI
 - **Piper TTS Integration**: Server-side high-quality speech synthesis via Python CLI
 - **Unified Voice Flow**: Complete conversation orchestration with auto-resume
 - **State Management**: voiceStateManager with pub/sub pattern
-- **Speech-to-Text**: Web Speech API integration with push-to-talk (spacebar)
+- **Audio Recording**: Browser MediaRecorder API for capturing microphone input
 - **Audio Visualization**: 3D particle system (Three.js) and 2D orb (Canvas)
-- **API Endpoints**: `/api/piper-tts` for speech generation and voice listing
+- **API Endpoints**: `/api/stt` for Whisper transcription, `/api/piper-tts` for speech generation
 
 ### Memory & RAG System (v1.1.0)
 - **SQLite Storage**: Persistent conversation and message storage
