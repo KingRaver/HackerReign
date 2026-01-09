@@ -320,4 +320,4 @@ npm run type-check  # Check TypeScript types
 
 ## License
 
-Vivid Visions ©
+© 2026 | Vivid Visions
