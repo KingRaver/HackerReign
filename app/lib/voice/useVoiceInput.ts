@@ -94,7 +94,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
 
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.smoothingTimeConstant = 0.7; // Reduced from 0.8 for faster response to speech changes
 
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
@@ -140,10 +140,12 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     let consecutiveSilenceFrames = 0;
-    const SILENCE_SENSITIVITY = 0.01; // Audio level threshold for silence (1% - more sensitive)
+    let initialSoundDetected = false; // Track if we've heard any sound yet
+    const SILENCE_SENSITIVITY = 0.005; // Audio level threshold for silence (0.5% - less aggressive)
+    const SPEECH_START_THRESHOLD = 0.015; // Require 1.5% level to confirm speech started
     const FRAMES_FOR_SILENCE = Math.ceil(silenceThresholdMs / 50); // ~50ms per frame
 
-    console.log(`[VoiceInput] Starting audio monitoring - silence threshold: ${SILENCE_SENSITIVITY}, frames needed: ${FRAMES_FOR_SILENCE}`);
+    console.log(`[VoiceInput] Starting audio monitoring - silence threshold: ${SILENCE_SENSITIVITY}, speech start: ${SPEECH_START_THRESHOLD}, frames needed: ${FRAMES_FOR_SILENCE}`);
 
     const monitorLevel = () => {
       // Check if recording is still active (don't rely on stale state)
@@ -167,25 +169,35 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
         audioLevel: level
       }));
 
-      // Detect silence: if level is below threshold, increment counter
-      if (level < SILENCE_SENSITIVITY) {
-        consecutiveSilenceFrames++;
-        if (consecutiveSilenceFrames % 20 === 0) {
-          console.log(`[VoiceInput] Silence frames: ${consecutiveSilenceFrames}/${FRAMES_FOR_SILENCE}, level: ${level.toFixed(4)}`);
-        }
-      } else {
-        // Reset silence counter when sound is detected
-        if (consecutiveSilenceFrames > 0) {
-          console.log(`[VoiceInput] Sound detected (level: ${level.toFixed(4)}) - resetting silence counter`);
-        }
-        consecutiveSilenceFrames = 0;
+      // Detect if user has started speaking (need higher threshold to confirm speech)
+      if (!initialSoundDetected && level > SPEECH_START_THRESHOLD) {
+        initialSoundDetected = true;
+        console.log(`[VoiceInput] Speech start detected (level: ${level.toFixed(4)})`);
       }
 
-      // If we've detected silence for 3 seconds, stop recording
-      if (consecutiveSilenceFrames >= FRAMES_FOR_SILENCE && mediaRecorderRef.current?.state === 'recording') {
-        console.log(`[VoiceInput] Silence detected (${consecutiveSilenceFrames} frames) - stopping recording`);
-        mediaRecorderRef.current.stop();
-        return; // Stop monitoring
+      // Only start counting silence AFTER we've detected initial speech
+      // This prevents stopping recording during the delay before user starts speaking
+      if (initialSoundDetected) {
+        // Detect silence: if level is below threshold, increment counter
+        if (level < SILENCE_SENSITIVITY) {
+          consecutiveSilenceFrames++;
+          if (consecutiveSilenceFrames % 20 === 0) {
+            console.log(`[VoiceInput] Silence frames: ${consecutiveSilenceFrames}/${FRAMES_FOR_SILENCE}, level: ${level.toFixed(4)}`);
+          }
+        } else {
+          // Reset silence counter when sound is detected
+          if (consecutiveSilenceFrames > 0) {
+            console.log(`[VoiceInput] Sound detected (level: ${level.toFixed(4)}) - resetting silence counter`);
+          }
+          consecutiveSilenceFrames = 0;
+        }
+
+        // If we've detected silence for the threshold duration, stop recording
+        if (consecutiveSilenceFrames >= FRAMES_FOR_SILENCE && mediaRecorderRef.current?.state === 'recording') {
+          console.log(`[VoiceInput] Silence detected (${consecutiveSilenceFrames} frames) - stopping recording`);
+          mediaRecorderRef.current.stop();
+          return; // Stop monitoring
+        }
       }
 
       requestAnimationFrame(monitorLevel);
