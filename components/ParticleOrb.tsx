@@ -24,6 +24,18 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
   const particlesRef = useRef<THREE.Points | null>(null);
   const animationIdRef = useRef<number | null>(null);
 
+  // Refs to pass props to animation loop without re-initializing
+  const stateRef = useRef(state);
+  const audioLevelRef = useRef(audioLevel);
+  const beatRef = useRef(beat);
+
+  // Update refs when props change (without re-initializing Three.js)
+  useEffect(() => {
+    stateRef.current = state;
+    audioLevelRef.current = audioLevel;
+    beatRef.current = beat;
+  }, [state, audioLevel, beat]);
+
   // Color scheme based on state
   const getStateColor = (state: VoiceState): THREE.Color => {
     switch (state) {
@@ -67,6 +79,14 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // Prevent multiple initializations
+    if (rendererRef.current) {
+      console.log('[ParticleOrb] Already initialized, skipping');
+      return;
+    }
+
+    console.log('[ParticleOrb] Initializing Three.js scene');
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -127,15 +147,15 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
     particlesRef.current = particles;
 
     let time = 0;
-    let targetColor = getStateColor(state);
+    let targetColor = getStateColor(stateRef.current);
     let currentColor = new THREE.Color(targetColor);
 
     // Animation loop
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
-      // Update color based on state
-      targetColor = getStateColor(state);
+      // Update color based on state (reads from parent props via ref)
+      targetColor = getStateColor(stateRef.current);
       currentColor.lerp(targetColor, 0.05);
       material.color.copy(currentColor);
 
@@ -173,13 +193,13 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
           velocities[idx + 2] *= -0.5;
         }
 
-        // Apply forces based on state
-        if (state === 'listening' || state === 'processing') {
+        // Apply forces based on state (reads from parent props via ref)
+        if (stateRef.current === 'listening' || stateRef.current === 'processing') {
           // Inward force - collapse toward center
           velocities[idx] -= x * 0.001;
           velocities[idx + 1] -= y * 0.001;
           velocities[idx + 2] -= z * 0.001;
-        } else if (state === 'speaking') {
+        } else if (stateRef.current === 'speaking') {
           // Outward pulse
           const pulse = 0.5 + 0.5 * Math.sin(time * 3 + i * 0.1);
           velocities[idx] += (x / distFromCenter) * pulse * 0.002;
@@ -192,16 +212,16 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
         velocities[idx + 1] *= 0.98;
         velocities[idx + 2] *= 0.98;
 
-        // Audio reactivity
-        if (audioLevel > 0) {
-          const randomForce = (Math.random() - 0.5) * audioLevel * 0.05;
+        // Audio reactivity (reads from parent props via ref)
+        if (audioLevelRef.current > 0) {
+          const randomForce = (Math.random() - 0.5) * audioLevelRef.current * 0.05;
           velocities[idx] += randomForce;
           velocities[idx + 1] += randomForce;
           velocities[idx + 2] += randomForce;
         }
 
-        // Beat pulse
-        const beatPulse = beat * 0.2;
+        // Beat pulse (reads from parent props via ref)
+        const beatPulse = beatRef.current * 0.2;
         const scale = 1 + beatPulse;
         positions[idx] *= scale;
         positions[idx + 1] *= scale;
@@ -214,8 +234,8 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
       particles.rotation.x += 0.0002;
       particles.rotation.y += 0.0004;
 
-      // Scale based on audio level and beat
-      const scale = 1 + audioLevel * 0.3 + beat * 0.2;
+      // Scale based on audio level and beat (reads from parent props via ref)
+      const scale = 1 + audioLevelRef.current * 0.3 + beatRef.current * 0.2;
       particles.scale.set(scale, scale, scale);
 
       // Render
@@ -250,7 +270,7 @@ const ParticleOrb: React.FC<ParticleOrbProps> = ({
         containerRef.current.removeChild(renderer.domElement);
       }
     };
-  }, [state, audioLevel, beat]);
+  }, []); // Only run once on mount
 
   return (
     <div className="flex flex-col items-center gap-4">

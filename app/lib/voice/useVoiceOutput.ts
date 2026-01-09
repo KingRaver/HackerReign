@@ -63,6 +63,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioContext;
+      console.log('[VoiceOutput] AudioContext initialized - state:', audioContext.state);
 
       // Create hidden audio element for playback
       const audioElement = new Audio();
@@ -200,6 +201,13 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
 
             const audioElement = audioElementRef.current;
             audioElement.src = audioUrl;
+
+            // Resume AudioContext if it was suspended (browser autoplay restriction)
+            if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+              console.log('[VoiceOutput] AudioContext suspended - resuming...');
+              await audioContextRef.current.resume();
+              console.log('[VoiceOutput] AudioContext state:', audioContextRef.current.state);
+            }
 
             console.log('[VoiceOutput] Starting audio playback...');
 
