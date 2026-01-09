@@ -8,8 +8,12 @@ hackerreign/
 │
 ├── app/                          # Next.js App Router directory
 │   ├── api/                      # API routes
-│   │   └── llm/                  # LLM endpoint
-│   │       └── route.ts          # LLM API handler with tool support
+│   │   ├── llm/                  # LLM endpoint
+│   │   │   └── route.ts          # LLM API handler with tool support
+│   │   ├── stt/                  # Speech-to-Text endpoint
+│   │   │   └── route.ts          # STT API (placeholder for future server-side STT)
+│   │   └── tts/                  # Text-to-Speech endpoint
+│   │       └── route.ts          # TTS API (client-side synthesis instructions)
 │   ├── lib/                      # Shared utilities and libraries
 │   │   ├── memory/               # Memory and RAG system
 │   │   │   ├── index.ts          # Storage singleton exports
@@ -25,6 +29,10 @@ hackerreign/
 │   │   │   ├── README.md         # Memory system documentation
 │   │   │   ├── INTEGRATION_GUIDE.md  # Integration instructions
 │   │   │   └── FILE_MANIFEST.md  # File descriptions
+│   │   ├── voice/                # Voice interaction system
+│   │   │   ├── useVoiceInput.ts  # Speech-to-Text hook (Web Speech API)
+│   │   │   ├── useVoiceOutput.ts # Text-to-Speech hook (Web Speech API)
+│   │   │   └── audioAnalyzer.ts  # Audio frequency analysis and beat detection
 │   │   └── tools/                # LLM tool integration
 │   │       ├── index.ts          # Tool exports and configuration
 │   │       ├── definitions.ts    # Tool JSON schemas
@@ -39,7 +47,8 @@ hackerreign/
 │   └── page.tsx                  # Home page
 │
 ├── components/                   # React components
-│   └── Chat.tsx                  # Chat interface component
+│   ├── Chat.tsx                  # Chat interface component
+│   └── VoiceOrb.tsx              # Animated voice visualization component
 │
 ├── public/                       # Static assets
 │   ├── file.svg
@@ -92,6 +101,25 @@ Memory and RAG (Retrieval-Augmented Generation) system:
 - `better-sqlite3` - SQLite database driver
 - `chromadb` - Vector database for semantic search
 
+#### `/app/lib/voice`
+Voice interaction system for speech input/output:
+- **useVoiceInput.ts** - React hook for speech-to-text using Web Speech API
+- **useVoiceOutput.ts** - React hook for text-to-speech using Web Speech API
+- **audioAnalyzer.ts** - Real-time audio frequency analysis and beat detection
+
+**Features:**
+- Browser-based speech recognition (Web Speech API)
+- Real-time audio level monitoring and visualization
+- Spacebar push-to-talk functionality
+- Text-to-speech synthesis with voice selection
+- Frequency analysis for visual feedback
+- Beat detection for responsive UI animations
+- Microphone permission handling and error recovery
+
+**Dependencies:**
+- Built on native browser APIs (no external dependencies)
+- Compatible with Chrome, Edge, and Safari
+
 #### `/app/lib/tools`
 LLM tool integration system:
 - **index.ts** - Central export point for tool definitions
@@ -106,7 +134,13 @@ LLM tool integration system:
 - Support for calculator (mathjs), weather (mock API), and code execution (vm2 sandbox)
 
 ### `/components`
-Reusable React components used across the application.
+Reusable React components used across the application:
+- **Chat.tsx** - Main chat interface with message history and input
+- **VoiceOrb.tsx** - Animated orb component for voice interaction visualization
+  - Real-time audio level visualization with pulsing effects
+  - State-based color schemes (listening: red, speaking: cyan, idle: teal)
+  - Canvas-based animations with smooth interpolation
+  - Click and spacebar interaction support
 
 ### `/public`
 Static files served directly by Next.js without processing.
@@ -133,6 +167,31 @@ See `package.json` for available npm scripts:
 - `npm run type-check` - Check TypeScript types
 
 ## Recent Updates
+
+### Voice Interaction System Addition
+- **Speech-to-Text (STT)**: Web Speech API integration for real-time voice input
+  - Push-to-talk with spacebar control
+  - Continuous and interim transcript support
+  - Real-time audio level monitoring for visual feedback
+  - Browser-based recognition (no server required)
+  - Error handling for microphone permissions and network issues
+- **Text-to-Speech (TTS)**: Web Speech API for natural voice output
+  - Browser-based speech synthesis
+  - Voice selection support
+  - Real-time frequency analysis for visualization
+  - Beat detection for responsive UI animations
+- **Voice Visualization**: Animated orb component with canvas-based graphics
+  - State-aware color schemes and animations
+  - Audio-reactive pulsing and scaling
+  - Smooth interpolation for natural motion
+  - Click and keyboard controls
+- **API Endpoints**: Placeholder routes for future server-side integration
+  - `/api/stt` - Ready for Whisper/Ollama STT integration
+  - `/api/tts` - Ready for Piper/ElevenLabs TTS integration
+- **Audio Analysis**: Real-time frequency and amplitude tracking
+  - FFT-based spectrum analysis
+  - Beat detection for speech emphasis
+  - Configurable frequency range filtering
 
 ### Memory & RAG System Addition
 - **Conversation Storage**: SQLite-based persistence for conversations and messages

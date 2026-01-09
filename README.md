@@ -1,14 +1,23 @@
 # Hacker Reign
 
-A Next.js-powered chat application with local LLM integration via Ollama, featuring advanced tool support, persistent conversation memory, and semantic search capabilities.
+A Next.js-powered chat application with local LLM integration via Ollama, featuring voice interaction, advanced tool support, persistent conversation memory, and semantic search capabilities.
 
 ## Features
 
 ### Core Capabilities
 - **Local LLM Integration**: Connects to Ollama for private, on-device AI chat
+- **Voice Interaction**: Hands-free speech-to-text and text-to-speech using Web Speech API
 - **Tool Support**: Built-in tools for weather queries, calculations (mathjs), and safe code execution (vm2 sandbox)
 - **Streaming Responses**: Real-time streaming for fast, responsive chat experience
 - **Modern Stack**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
+
+### Voice Interaction System
+- **Speech-to-Text**: Real-time voice input using Web Speech API
+- **Text-to-Speech**: Natural voice output with browser-based synthesis
+- **Push-to-Talk**: Hold spacebar or click the orb to speak
+- **Audio Visualization**: Real-time audio level monitoring with animated orb
+- **Beat Detection**: Audio-reactive animations responding to speech emphasis
+- **No Dependencies**: Built entirely on native browser APIs
 
 ### Memory & RAG System
 - **Persistent Conversations**: SQLite-based storage for conversation history and messages
@@ -41,7 +50,11 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
 
 2. **Node.js**: Version 20 or higher recommended
 
-3. **ChromaDB** (Optional for RAG features):
+3. **Modern Browser** (for voice features):
+   - Chrome, Edge, or Safari with Web Speech API support
+   - Microphone access for speech-to-text
+
+4. **ChromaDB** (Optional for RAG features):
    - The chromadb npm package is included in dependencies
    - For persistent vector storage, you can optionally run a ChromaDB server
    - See [ChromaDB docs](https://docs.trychroma.com/) for server setup
@@ -62,7 +75,43 @@ A Next.js-powered chat application with local LLM integration via Ollama, featur
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 4. **Start chatting:**
-   The app auto-updates as you edit files. Try asking for weather, calculations, or code examples!
+   - Type messages or use voice input (hold spacebar to speak)
+   - The app auto-updates as you edit files
+   - Try asking for weather, calculations, or code examples!
+
+## Voice Interaction
+
+The application features a complete voice interaction system with no external dependencies:
+
+### Features
+- **Speech-to-Text**: Uses Web Speech API for real-time voice recognition
+  - Hold **SPACEBAR** to activate push-to-talk
+  - Or **click the animated orb** to start listening
+  - Continuous and interim transcript support
+  - Automatic silence detection
+
+- **Text-to-Speech**: Browser-based speech synthesis
+  - Automatic voice output for AI responses
+  - Customizable voice selection
+  - Real-time frequency analysis for visualization
+
+- **Voice Orb Visualization**:
+  - **Red pulsing**: Listening to your voice
+  - **Cyan pulsing**: AI is speaking
+  - **Teal idle**: Ready for input
+  - Audio-reactive animations with beat detection
+
+### Components
+Located in `app/lib/voice/`:
+- **useVoiceInput.ts**: Speech-to-text React hook
+- **useVoiceOutput.ts**: Text-to-speech React hook
+- **audioAnalyzer.ts**: Real-time audio analysis and FFT processing
+- **VoiceOrb.tsx**: Canvas-based visualization component
+
+### Browser Compatibility
+- **Chrome/Edge**: Full support (recommended)
+- **Safari**: Full support on macOS/iOS
+- **Firefox**: Limited Web Speech API support
 
 ## Available Tools
 
@@ -137,6 +186,14 @@ If the memory/RAG system isn't working:
 4. Check console logs for `[ChromaRetrieval]` and `[SQLiteStorage]` messages
 5. Review initialization in `app/lib/memory/INTEGRATION_GUIDE.md`
 
+### Voice System Issues
+If voice features aren't working:
+1. **Microphone Permission**: Grant microphone access when prompted
+2. **Browser Support**: Use Chrome, Edge, or Safari (Firefox has limited support)
+3. **HTTPS Required**: Web Speech API requires HTTPS in production (localhost works)
+4. **Check Console**: Look for Web Speech API error messages
+5. **Test Audio**: Verify system microphone and speakers are working
+
 ## Development Scripts
 
 ```bash
@@ -148,6 +205,14 @@ npm run type-check  # Check TypeScript types
 ```
 
 ## Recent Updates
+
+### Voice Interaction System (v1.2.0)
+- **Speech-to-Text**: Web Speech API integration with push-to-talk (spacebar)
+- **Text-to-Speech**: Browser-based synthesis with voice selection
+- **Audio Visualization**: Real-time frequency analysis and beat detection
+- **Voice Orb Component**: Canvas-based animated orb with state-aware colors
+- **API Endpoints**: Placeholder routes for future server-side STT/TTS integration
+- **Zero Dependencies**: Built entirely on native browser APIs
 
 ### Memory & RAG System (v1.1.0)
 - **SQLite Storage**: Persistent conversation and message storage
