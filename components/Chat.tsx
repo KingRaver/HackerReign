@@ -21,6 +21,7 @@ export default function Chat() {
   const [voiceMode, setVoiceMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const autoResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Voice input hook
   const voiceInput = useVoiceInput({
@@ -50,13 +51,29 @@ export default function Chat() {
       });
     },
     onPlaybackEnd: () => {
-      // Could trigger next action here
+      // Auto-resume listening after TTS finishes
+      autoResumeListening();
     },
     onError: (error) => {
       console.error('Voice output error:', error);
       // Could show error toast here
     }
   });
+
+  /**
+   * Auto-resume listening after TTS finishes (with 0.5s delay)
+   */
+  const autoResumeListening = useCallback(() => {
+    // Clear any pending timeout
+    if (autoResumeTimeoutRef.current) {
+      clearTimeout(autoResumeTimeoutRef.current);
+    }
+
+    // Small delay to give user time to think
+    autoResumeTimeoutRef.current = setTimeout(() => {
+      voiceInput.startListening();
+    }, 500);
+  }, [voiceInput]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,6 +82,15 @@ export default function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, partialContent, scrollToBottom]);
+
+  // Cleanup auto-resume timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoResumeTimeoutRef.current) {
+        clearTimeout(autoResumeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const sendMessage = async (textToSend?: string) => {
     const messageText = textToSend || input;
@@ -100,9 +126,13 @@ export default function Chat() {
         const aiMsg: Message = { id: aiId, role: 'assistant', content };
         setMessages(prev => [...prev, aiMsg]);
 
-        // Play response in voice mode
+        // Play response in voice mode with auto-resume
         if (voiceMode) {
-          voiceOutput.speak(content);
+          try {
+            await voiceOutput.speak(content);
+          } catch (error) {
+            console.error('TTS error:', error);
+          }
         }
       } else {
         // Handle streaming response (when tools are disabled)
@@ -148,9 +178,13 @@ export default function Chat() {
             reader.releaseLock();
           }
 
-          // Play full response in voice mode
+          // Play full response in voice mode with auto-resume
           if (voiceMode) {
-            voiceOutput.speak(fullContent);
+            try {
+              await voiceOutput.speak(fullContent);
+            } catch (error) {
+              console.error('TTS error:', error);
+            }
           }
         }
       }

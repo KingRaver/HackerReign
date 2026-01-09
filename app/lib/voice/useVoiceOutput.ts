@@ -14,7 +14,7 @@ interface UseVoiceOutputOptions {
   onFrequencyAnalysis?: (data: FrequencyData) => void;
   onPlaybackEnd?: () => void;
   onError?: (error: string) => void;
-  voice?: string; // Piper voice ID
+  voice?: string; // Piper voice ID (e.g., 'en_US-libritts-high')
 }
 
 interface VoiceOutputState {
@@ -44,6 +44,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const previousAmplitudeRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Store callbacks in refs to avoid re-initialization
   const onFrequencyAnalysisRef = useRef(onFrequencyAnalysis);
@@ -101,7 +102,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
       };
 
       audioElement.onended = () => {
-        setState(prev => ({ ...prev, isPlaying: false }));
+        setState(prev => ({ ...prev, isPlaying: false, progress: 1 }));
         analyzer.stop();
         onPlaybackEndRef.current?.();
       };
@@ -136,93 +137,120 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
   }, []);
 
   /**
-   * Generate speech from text and play it using Web Speech API
+   * Generate speech from text using Piper TTS API and play it
    */
   const speak = useCallback(
-    async (text: string) => {
-      if (!text.trim()) return;
-
-      try {
-        setState(prev => ({
-          ...prev,
-          isGenerating: true,
-          error: null,
-          progress: 0
-        }));
-
-        // Use browser's Web Speech API for TTS
-        if (!('speechSynthesis' in window)) {
-          throw new Error('Text-to-speech not supported in this browser');
+    async (text: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        if (!text.trim()) {
+          resolve();
+          return;
         }
 
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
-
-        const utterance = new SpeechSynthesisUtterance(text);
-
-        // Set voice if specified
-        if (voice && voice !== 'default') {
-          const voices = window.speechSynthesis.getVoices();
-          const selectedVoice = voices.find(v => v.name === voice || v.lang.includes(voice));
-          if (selectedVoice) {
-            utterance.voice = selectedVoice;
-          }
+        // Cancel any previous request
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
         }
+        abortControllerRef.current = new AbortController();
 
-        utterance.onstart = () => {
-          setState(prev => ({
-            ...prev,
-            isGenerating: false,
-            isPlaying: true
-          }));
-          if (analyzerRef.current) {
-            analyzerRef.current.start();
-          }
-        };
-
-        utterance.onend = () => {
-          setState(prev => ({
-            ...prev,
-            isPlaying: false,
-            progress: 1
-          }));
-          if (analyzerRef.current) {
-            analyzerRef.current.stop();
-          }
-          onPlaybackEndRef.current?.();
-        };
-
-        utterance.onerror = (event) => {
-          throw new Error(`Speech synthesis error: ${event.error}`);
-        };
-
-        // Simulate progress since speechSynthesis doesn't provide it
-        const estimatedDuration = (text.length / 15) * 1000; // ~15 chars per second
-        const progressInterval = setInterval(() => {
-          setState(prev => {
-            if (!prev.isPlaying) {
-              clearInterval(progressInterval);
-              return prev;
-            }
-            return {
+        (async () => {
+          try {
+            setState(prev => ({
               ...prev,
-              progress: Math.min(0.95, prev.progress + 0.05)
-            };
-          });
-        }, estimatedDuration / 20);
+              isGenerating: true,
+              error: null,
+              progress: 0
+            }));
 
-        window.speechSynthesis.speak(utterance);
+            // Call Piper TTS API endpoint
+            const response = await fetch('/api/piper-tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, voice }),
+              signal: abortControllerRef.current?.signal
+            });
 
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Voice output error';
-        setState(prev => ({
-          ...prev,
-          isGenerating: false,
-          error: errorMessage,
-          isPlaying: false
-        }));
-        onErrorRef.current?.(errorMessage);
-      }
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+
+            // Get audio blob
+            const audioBlob = await response.blob();
+
+            if (audioBlob.size === 0) {
+              throw new Error('Empty audio response from Piper TTS');
+            }
+
+            // Create blob URL and play
+            const audioUrl = URL.createObjectURL(audioBlob);
+
+            if (!audioElementRef.current) {
+              throw new Error('Audio element not initialized');
+            }
+
+            const audioElement = audioElementRef.current;
+            audioElement.src = audioUrl;
+
+            // Play audio
+            const playPromise = audioElement.play();
+
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  setState(prev => ({
+                    ...prev,
+                    isGenerating: false
+                  }));
+                })
+                .catch(err => {
+                  // Ignore abort errors (user cancelled)
+                  if (err.name !== 'AbortError') {
+                    throw err;
+                  }
+                });
+            }
+
+            // Wait for audio to finish
+            await new Promise<void>((audioResolve, audioReject) => {
+              const onEnded = () => {
+                audioElement.removeEventListener('ended', onEnded);
+                audioElement.removeEventListener('error', onError);
+                URL.revokeObjectURL(audioUrl);
+                audioResolve();
+              };
+
+              const onError = () => {
+                audioElement.removeEventListener('ended', onEnded);
+                audioElement.removeEventListener('error', onError);
+                URL.revokeObjectURL(audioUrl);
+                audioReject(new Error(`Audio playback failed: ${audioElement.error?.message}`));
+              };
+
+              audioElement.addEventListener('ended', onEnded);
+              audioElement.addEventListener('error', onError);
+            });
+
+            resolve();
+          } catch (error: unknown) {
+            // Don't treat abort errors as failures
+            if (error instanceof Error && error.name === 'AbortError') {
+              resolve();
+              return;
+            }
+
+            const errorMessage = error instanceof Error ? error.message : 'Voice output error';
+            setState(prev => ({
+              ...prev,
+              isGenerating: false,
+              error: errorMessage,
+              isPlaying: false
+            }));
+            onErrorRef.current?.(errorMessage);
+            reject(error);
+          }
+        })();
+      });
     },
     [voice]
   );
@@ -231,14 +259,15 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
    * Stop playback
    */
   const stop = useCallback(() => {
-    // Stop speech synthesis
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    // Abort any pending TTS request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
 
     if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current.currentTime = 0;
+      URL.revokeObjectURL(audioElementRef.current.src);
     }
     if (analyzerRef.current) {
       analyzerRef.current.stop();
@@ -246,6 +275,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
     setState(prev => ({
       ...prev,
       isPlaying: false,
+      isGenerating: false,
       progress: 0
     }));
   }, []);
@@ -263,6 +293,9 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       if (audioElementRef.current) {
         audioElementRef.current.pause();
         URL.revokeObjectURL(audioElementRef.current.src);
@@ -277,6 +310,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
     ...state,
     speak,
     stop,
-    getAudioLevel
+    getAudioLevel,
+    isPlaying: state.isPlaying
   };
 }
