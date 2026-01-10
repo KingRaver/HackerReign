@@ -10,7 +10,12 @@
     "lint": "eslint . --ext .ts,.tsx --fix",
     "type-check": "tsc --noEmit",
     "analyze": "next build && npx @next/bundle-analyzer dist",
-    "preview": "next build && next start"
+    "preview": "next build && next start",
+    "dl-server": "cd app/lib/dl-codegen && python3 server.py &",
+    "dl-train": "npm run dl-server && sleep 2 && curl -X POST http://localhost:3000/api/dl-codegen/train -H 'Content-Type: application/json' -d '{\"datasetPath\":\"public/codesnippets.json\"}'",
+    "dl-setup": "pip3 install torch flask numpy && mkdir -p .data",
+    "chroma-start": "docker start chromadb || docker run -d --name chromadb -p 8000:8000 -v $(pwd)/.data/chroma:/chroma/chroma chromadb/chroma:latest",
+    "chroma-stop": "docker stop chromadb"
   },
   "dependencies": {
     "ai": "^6.0.20",

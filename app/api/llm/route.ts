@@ -94,6 +94,45 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
     }
 
     // ============================================================
+    // DL CODE GENERATION: Get neural network predictions
+    // ============================================================
+    let dlSuggestion: string | null = null;
+    const enableDL = process.env.ENABLE_DL_PREDICTIONS !== 'false'; // Enabled by default
+
+    if (enableDL && lastUserMessage?.role === 'user') {
+      try {
+        // Get conversation history for context
+        const contextMessages = messages.slice(-3)
+          .filter((m: any) => m.role === 'assistant')
+          .map((m: any) => m.content);
+
+        const dlResponse = await fetch('http://localhost:3000/api/dl-codegen/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: lastUserMessage.content,
+            context: contextMessages
+          })
+        });
+
+        if (dlResponse.ok) {
+          const dlResult = await dlResponse.json();
+          if (dlResult.success && dlResult.prediction.confidence > 0.5) {
+            dlSuggestion = dlResult.prediction.completion;
+            console.log('[DL] Neural network suggestion:', dlSuggestion,
+                       `(confidence: ${(dlResult.prediction.confidence * 100).toFixed(1)}%)`);
+
+            // Inject DL suggestion into system prompt
+            systemPrompt += `\n\n[Neural Network Code Suggestion: "${dlSuggestion}" - Consider this if relevant to the user's request]`;
+          }
+        }
+      } catch (error) {
+        console.warn('[DL] Error getting neural network prediction:', error);
+        // Continue without DL augmentation
+      }
+    }
+
+    // ============================================================
     // PREPARE MESSAGES FOR LLM
     // ============================================================
     const enhancedMessages: ChatCompletionMessageParam[] = [
