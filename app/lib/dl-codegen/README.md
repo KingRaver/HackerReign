@@ -636,7 +636,7 @@ Look for `[DL-Performance]` logs showing cache hits/misses and latency breakdown
 
 ## License
 
-MIT - See LICENSE file
+©2026 | Vivid Visions | HackerReign™
 
 ---
 

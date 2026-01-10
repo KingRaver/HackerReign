@@ -622,7 +622,7 @@ Check logs for:
 
 ## License
 
-MIT - See LICENSE file
+©2026 | Vivid Visions | HackerReign™
 
 ---
 

@@ -936,7 +936,7 @@ Enable detailed logging by checking console output:
 
 ## License
 
-MIT - See LICENSE file
+©2026 | Vivid Visions | HackerReign™
 
 ---
 
