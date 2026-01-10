@@ -117,7 +117,7 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
 
         if (dlResponse.ok) {
           const dlResult = await dlResponse.json();
-          if (dlResult.success && dlResult.prediction.confidence > 0.5) {
+          if (dlResult.success && dlResult.prediction.confidence > 0.7) {
             dlSuggestion = dlResult.prediction.completion;
             console.log('[DL] Neural network suggestion:', dlSuggestion,
                        `(confidence: ${(dlResult.prediction.confidence * 100).toFixed(1)}%)`);

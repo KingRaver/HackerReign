@@ -2,6 +2,7 @@
 // Ollama embeddings - converts text to dense vectors
 
 import { EmbeddingRequest, EmbeddingResponse } from '../schemas';
+import { createHash } from 'crypto';
 
 /**
  * Ollama Embeddings Manager
@@ -14,13 +15,16 @@ export class OllamaEmbeddings {
   private ollamaHost: string;
   private embeddingModel: string;
   private cache: Map<string, number[]> = new Map();
+  private maxCacheSize: number;
 
   constructor(
     ollamaHost: string = process.env.OLLAMA_EMBED_HOST || 'http://localhost:11434',
-    embeddingModel: string = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text'
+    embeddingModel: string = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text',
+    maxCacheSize: number = 1000 // Default: cache up to 1000 embeddings (~6MB)
   ) {
     this.ollamaHost = ollamaHost;
     this.embeddingModel = embeddingModel;
+    this.maxCacheSize = maxCacheSize;
   }
 
   /**
@@ -31,7 +35,11 @@ export class OllamaEmbeddings {
     // Check cache first
     const cacheKey = this.getCacheKey(text);
     if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
+      // LRU: Move to end by deleting and re-inserting
+      const cached = this.cache.get(cacheKey)!;
+      this.cache.delete(cacheKey);
+      this.cache.set(cacheKey, cached);
+      return cached;
     }
 
     try {
@@ -62,8 +70,8 @@ export class OllamaEmbeddings {
       let embedding = data.embeddings[0];
       embedding = this.normalize(embedding);
 
-      // Cache the result
-      this.cache.set(cacheKey, embedding);
+      // Cache the result with LRU eviction
+      this.addToCache(cacheKey, embedding);
 
       return embedding;
     } catch (error) {
@@ -105,7 +113,7 @@ export class OllamaEmbeddings {
       const normalized = data.embeddings.map((emb, idx) => {
         const norm = this.normalize(emb);
         const cacheKey = this.getCacheKey(texts[idx]);
-        this.cache.set(cacheKey, norm);
+        this.addToCache(cacheKey, norm);
         return norm;
       });
 
@@ -210,10 +218,49 @@ export class OllamaEmbeddings {
   }
 
   /**
-   * Internal: Generate cache key (simple hash of text)
+   * Internal: Add to cache with LRU eviction
+   */
+  private addToCache(key: string, value: number[]): void {
+    // If cache is full, remove oldest entry (first in Map)
+    if (this.cache.size >= this.maxCacheSize) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
+    }
+    this.cache.set(key, value);
+  }
+
+  /**
+   * Internal: Generate cache key (MD5 hash of text)
    */
   private getCacheKey(text: string): string {
-    // Simple hash: use first 50 chars + length
-    return `${text.substring(0, 50)}_${text.length}`;
+    // Use MD5 hash for reliable cache key without collisions
+    return createHash('md5').update(text).digest('hex');
   }
+}
+
+/**
+ * Global shared OllamaEmbeddings instance
+ * Shared between DL-CodeGen and Memory systems to avoid duplicate embedding calls
+ */
+let sharedEmbeddingsInstance: OllamaEmbeddings | null = null;
+
+/**
+ * Get or create the shared OllamaEmbeddings instance
+ * This ensures both DL and Memory systems use the same cache
+ */
+export function getSharedEmbeddings(
+  ollamaHost?: string,
+  embeddingModel?: string,
+  maxCacheSize?: number
+): OllamaEmbeddings {
+  if (!sharedEmbeddingsInstance) {
+    sharedEmbeddingsInstance = new OllamaEmbeddings(
+      ollamaHost,
+      embeddingModel,
+      maxCacheSize
+    );
+  }
+  return sharedEmbeddingsInstance;
 }

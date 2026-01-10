@@ -1,11 +1,12 @@
 // lib/dl-codegen/preprocess.ts
 // Advanced code preprocessing: tokenization, feature extraction, embedding integration
-import { OllamaEmbeddings } from '../memory/rag/embeddings';
+import { getSharedEmbeddings } from '../memory/rag/embeddings';
 import type { CodeDataset } from './types';
 import fs from 'fs/promises';
 
 export async function preprocessCodeData(input: string | CodeDataset): Promise<Float32Array[]> {
-  const ollama = new OllamaEmbeddings();
+  // Use shared embeddings instance to share cache with Memory system
+  const ollama = getSharedEmbeddings();
 
   let texts: string[];
 

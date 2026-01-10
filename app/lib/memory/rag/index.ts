@@ -1,7 +1,7 @@
 // app/lib/memory/rag/index.ts
 // RAG (Retrieval-Augmented Generation) Orchestrator
 
-import { OllamaEmbeddings } from './embeddings';
+import { OllamaEmbeddings, getSharedEmbeddings } from './embeddings';
 import { ChromaRetrieval } from './retrieval';
 import { Message, AugmentedPrompt, RetrievalResult } from '../schemas';
 import { getStorage } from '../storage';
@@ -23,7 +23,8 @@ export class RAGManager {
     topK?: number,
     similarityThreshold?: number
   ) {
-    this.embeddings = new OllamaEmbeddings(ollamaHost, embeddingModel);
+    // Use shared embeddings instance to share cache with DL-CodeGen
+    this.embeddings = getSharedEmbeddings(ollamaHost, embeddingModel);
     this.retrieval = new ChromaRetrieval(
       this.embeddings,
       collectionName,

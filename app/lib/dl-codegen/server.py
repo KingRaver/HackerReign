@@ -8,10 +8,14 @@ from torch.utils.data import DataLoader, TensorDataset
 import json
 import os
 import sys
+import threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = Flask(__name__)
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+# Thread lock for model loading (thread-safe for gunicorn workers)
+model_lock = threading.Lock()
 
 class DeepCodeNet(nn.Module):
     def __init__(self, input_dim=544, hidden_dims=[512,256,128,64], dropout=0.2):
@@ -89,11 +93,16 @@ def predict():
     if not data:
         return jsonify({'error': 'No JSON data provided'}), 400
 
+    # Thread-safe model loading with double-checked locking
     if model is None:
-        model = DeepCodeNet()
-        model.load_state_dict(torch.load(data['modelPath'], map_location=device))
-        model.to(device)
-        model.eval()
+        with model_lock:
+            # Double-check inside lock to prevent race condition
+            if model is None:
+                model = DeepCodeNet()
+                model.load_state_dict(torch.load(data['modelPath'], map_location=device, weights_only=True))
+                model.to(device)
+                model.eval()
+                print(f"[Flask] Model loaded on device: {device}")
 
     features = torch.tensor([data['features']], dtype=torch.float32).to(device)
 
