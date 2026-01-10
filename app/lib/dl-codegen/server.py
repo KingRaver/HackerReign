@@ -12,7 +12,8 @@ import threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = Flask(__name__)
-device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+# Force CPU mode for stability with Gunicorn workers (MPS has multi-process issues)
+device = torch.device('cpu')
 
 # Thread lock for model loading (thread-safe for gunicorn workers)
 model_lock = threading.Lock()
@@ -93,27 +94,35 @@ def predict():
     if not data:
         return jsonify({'error': 'No JSON data provided'}), 400
 
-    # Thread-safe model loading with double-checked locking
-    if model is None:
-        with model_lock:
-            # Double-check inside lock to prevent race condition
-            if model is None:
-                model = DeepCodeNet()
-                model.load_state_dict(torch.load(data['modelPath'], map_location=device, weights_only=True))
-                model.to(device)
-                model.eval()
-                print(f"[Flask] Model loaded on device: {device}")
+    try:
+        # Thread-safe model loading with double-checked locking
+        if model is None:
+            with model_lock:
+                # Double-check inside lock to prevent race condition
+                if model is None:
+                    if 'modelPath' not in data or not os.path.exists(data['modelPath']):
+                        return jsonify({'error': 'Model file not found or not trained yet'}), 404
 
-    features = torch.tensor([data['features']], dtype=torch.float32).to(device)
+                    model = DeepCodeNet()
+                    model.load_state_dict(torch.load(data['modelPath'], map_location=device, weights_only=True))
+                    model.to(device)
+                    model.eval()
+                    print(f"[Flask] Model loaded on device: {device}")
 
-    # Ensure model is in eval mode (disables dropout and changes BatchNorm behavior)
-    model.eval()
-    with torch.no_grad():
-        logits = model(features)
-        probs = torch.softmax(logits, dim=-1)
-        pred = probs.argmax(-1).cpu().numpy()[0]
+        features = torch.tensor([data['features']], dtype=torch.float32).to(device)
 
-    return jsonify({'completion_idx': int(pred), 'confidence': float(probs.max())})
+        # Ensure model is in eval mode (disables dropout and changes BatchNorm behavior)
+        model.eval()
+        with torch.no_grad():
+            logits = model(features)
+            probs = torch.softmax(logits, dim=-1)
+            pred = probs.argmax(-1).cpu().numpy()[0]
+
+        return jsonify({'completion_idx': int(pred), 'confidence': float(probs.max())})
+
+    except Exception as e:
+        print(f"[Flask] Prediction error: {e}", file=sys.stderr)
+        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     os.makedirs('../../.data', exist_ok=True)
