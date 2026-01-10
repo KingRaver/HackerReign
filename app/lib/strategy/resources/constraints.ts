@@ -150,7 +150,8 @@ export class ResourceConstraints {
 
 /**
  * Middleware - Apply to all decisions automatically
- * Now less restrictive: only suggests optimizations, doesn't force downgrades
+ * DISABLED: Trust the user and adaptive strategy to make the right choices
+ * System can handle swap/virtual memory - no artificial limits
  */
 export function withResourceConstraints(
   decisionFn: (context: StrategyContext) => Promise<StrategyDecision>,
@@ -163,17 +164,12 @@ export function withResourceConstraints(
     const validation = ResourceConstraints.isValidDecision(decision, context.systemResources, constraints);
 
     if (!validation.valid) {
-      // Just warn, don't auto-downgrade unless it's truly critical
-      console.warn('[Constraints] Resource warnings (not blocking):', validation.violations);
-
-      // Only auto-downgrade if RAM is critically low (< 2GB available)
-      if (context.systemResources.availableRAM < 2000) {
-        console.warn('[Constraints] Critical RAM - forcing lightweight model');
-        decision.selectedModel = 'llama3.2:3b-instruct-q5_K_M';
-        decision.reasoning += ' [Critical RAM: forced 3B model]';
-      }
+      // Just log warnings - don't override the strategy decision
+      console.log('[Constraints] Resource info (not blocking):', validation.violations);
+      console.log('[Constraints] Trusting adaptive strategy decision:', decision.selectedModel);
     }
 
+    // Never override the adaptive strategy - it knows best
     return decision;
   });
 }

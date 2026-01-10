@@ -1,5 +1,6 @@
 // components/TopNav.tsx
 'use client';
+import Link from 'next/link';
 
 interface Model {
   id: string;
@@ -7,7 +8,7 @@ interface Model {
   speed: string;
 }
 
-type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost';
+type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive';
 
 interface TopNavProps {
   // State values
@@ -57,15 +58,15 @@ export default function TopNav({
         <div className="max-w-full mx-auto px-8 py-5">
           {/* Top Row: Branding + Controls */}
           <div className="flex items-center justify-between gap-8">
-            {/* Left: Branding */}
-            <div className="flex flex-col min-w-max">
-              <h1 className="text-2xl font-black text-slate-900 drop-shadow-sm tracking-tight">
+            {/* Left: Branding - Clickable Logo to Analytics Dashboard */}
+            <Link href="/analytics" className="flex flex-col min-w-max group cursor-pointer">
+              <h1 className="text-2xl font-black text-slate-900 drop-shadow-sm tracking-tight group-hover:text-slate-700 transition-colors">
                 🐺 Hacker Reign
               </h1>
-              <p className="text-slate-800 text-xs font-bold tracking-widest uppercase">
+              <p className="text-slate-800 text-xs font-bold tracking-widest uppercase group-hover:text-slate-700 transition-colors">
                 Enterprise Intelligence
               </p>
-            </div>
+            </Link>
 
             {/* Center Divider */}
             <div className="h-12 w-1 bg-slate-900/30 rounded-full" />
@@ -119,7 +120,7 @@ export default function TopNav({
                     value={selectedStrategy}
                     onChange={(e) => onStrategyChange(e.target.value as StrategyType)}
                     className="px-4 py-2.5 rounded-lg text-xs font-bold bg-white/50 text-slate-900 border-2 border-slate-900/60 hover:bg-white/70 hover:border-slate-900/90 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-900/70 cursor-pointer shadow-sm hover:shadow-md active:scale-95"
-                    title="Select optimization strategy: Balanced, Speed, Quality, or Cost"
+                    title="Select optimization strategy: Balanced, Speed, Quality, Cost, or Adaptive ML"
                   >
                     <option value="balanced" className="bg-white text-slate-900 font-bold">
                       ⚖️ Balanced
@@ -132,6 +133,9 @@ export default function TopNav({
                     </option>
                     <option value="cost" className="bg-white text-slate-900 font-bold">
                       💰 Cost
+                    </option>
+                    <option value="adaptive" className="bg-white text-slate-900 font-bold">
+                      🤖 Adaptive ML
                     </option>
                   </select>
                 )}

@@ -9,10 +9,13 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 
 const openai = new OpenAI({
   baseURL: 'http://localhost:11434/v1',
-  apiKey: 'ollama'
+  apiKey: 'ollama',
+  timeout: 600000, // 10 minute timeout for complex queries
+  maxRetries: 0 // Don't retry, let it cook
 });
 
 export const runtime = 'nodejs'; // Required for SQLite/Chroma
+export const maxDuration = 300; // 5 minutes max for complex queries (Vercel/Next.js limit)
 
 export async function POST(req: NextRequest) {
   // Declare strategy variables outside try block for error handling
@@ -239,11 +242,22 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
       }
 
       const url = 'http://localhost:11434/v1/chat/completions';
+
+      // Fetch with extended timeout for complex queries
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Connection': 'keep-alive'
+        },
         body: JSON.stringify(body),
-      });
+        signal: controller.signal,
+        // @ts-ignore - Next.js/Node fetch options
+        keepalive: true,
+      }).finally(() => clearTimeout(timeoutId));
 
       if (!response.ok) {
         const error = await response.text();

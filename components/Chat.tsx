@@ -24,7 +24,7 @@ interface Message {
   };
 }
 
-type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost';
+type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive';
 
 export default function Chat() {
   // State Management
