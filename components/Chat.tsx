@@ -2,6 +2,7 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ParticleOrb from './ParticleOrb';
+import TopNav from './TopNav';
 import { useVoiceFlow } from '@/app/lib/voice/useVoiceFlow';
 
 interface Message {
@@ -13,6 +14,7 @@ interface Message {
 type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost';
 
 export default function Chat() {
+  // State Management
   const [model, setModel] = useState('qwen2.5-coder:7b-instruct-q5_K_M');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -23,8 +25,19 @@ export default function Chat() {
   const [strategyEnabled, setStrategyEnabled] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('balanced');
   const [autoSelectedModel, setAutoSelectedModel] = useState<string>('');
+  
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Models Configuration
+  const models = [
+    { id: 'llama3.2:3b-instruct-q5_K_M', name: 'Llama 3.2', speed: '🚀' },
+    { id: 'qwen2.5:7b-instruct-q5_K_M', name: 'Qwen 2.5', speed: '🎯🔨' },
+    { id: 'qwen2.5-coder:7b-instruct-q5_K_M', name: 'Vibe Coder', speed: '⚡' },
+    { id: 'yi-coder:9b', name: 'Yi 9B', speed: '🧠' },
+    { id: 'deepseek-coder-v2:16b', name: 'DS V2 16B', speed: '🔥' }
+  ];
 
   // Voice flow hook - handles STT, TTS, and seamless conversation loop
   const voice = useVoiceFlow({
@@ -43,6 +56,7 @@ export default function Chat() {
     }
   });
 
+  // Auto-scroll to bottom of messages
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -205,228 +219,164 @@ export default function Chat() {
     }
   };
 
-  const models = [
-    { id: 'llama3.2:3b-instruct-q5_K_M', name: 'Llama 3.2', speed: '🚀' },
-    { id: 'qwen2.5:7b-instruct-q5_K_M', name: 'Qwen 2.5', speed: '🏎️💨' },
-    { id: 'qwen2.5-coder:7b-instruct-q5_K_M', name: 'Vibe Coder', speed: '⚡' },
-    { id: 'yi-coder:9b', name: 'Yi 9B', speed: '💎' },
-    { id: 'deepseek-coder-v2:16b', name: 'DS V2 16B', speed: '🧠' }
-  ];
-
   return (
-    <div className="max-w-4xl mx-auto bg-linear-to-br from-slate-900/90 via-teal/20 to-slate-900/90 backdrop-blur-3xl rounded-3xl shadow-2xl border border-cyan-light/10 p-8 space-y-6 min-h-screen flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-6 items-center justify-between pb-4 border-b border-cyan-light/5">
-        <div className="text-center sm:text-left">
-          <h1 className="text-4xl font-black bg-linear-to-r from-cyan-light via-teal to-yellow bg-clip-text text-transparent drop-shadow-lg tracking-tight">
-            Hacker Reign
-          </h1>
-          <p className="text-white/50 text-xs font-medium tracking-widest uppercase mt-2">Enterprise Intelligence</p>
-        </div>
-        <div className="flex flex-wrap gap-4 items-center">
-          {/* Mode Selector */}
-          <select
-            value={manualMode}
-            onChange={(e) => setManualMode(e.target.value as '' | 'learning' | 'code-review' | 'expert')}
-            className="px-5 py-3 rounded-2xl text-sm font-semibold bg-white/8 text-white border-2 border-cyan-light/30 hover:border-cyan-light/50 hover:bg-white/12 transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer backdrop-blur-sm"
-          >
-            <option value="" className="bg-slate-900 text-white font-medium">🤖 Auto-detect</option>
-            <option value="learning" className="bg-slate-900 text-white font-medium">🎓 Learning Mode</option>
-            <option value="code-review" className="bg-slate-900 text-white font-medium">👁️ Code Review</option>
-            <option value="expert" className="bg-slate-900 text-white font-medium">🧠 Expert Mode</option>
-          </select>
+    <>
+      {/* Sticky Top Navigation */}
+      <TopNav
+        model={model}
+        manualMode={manualMode}
+        strategyEnabled={strategyEnabled}
+        selectedStrategy={selectedStrategy}
+        enableTools={enableTools}
+        voiceEnabled={voiceEnabled}
+        autoSelectedModel={autoSelectedModel}
+        messageCount={messages.length}
+        onModelChange={setModel}
+        onModeChange={setManualMode}
+        onStrategyToggle={setStrategyEnabled}
+        onStrategyChange={setSelectedStrategy}
+        onToolsToggle={() => setEnableTools(!enableTools)}
+        onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+        models={models}
+      />
 
-          {/* Strategy Toggle & Selector */}
-          <div className="flex gap-3 items-center">
-            {/* Strategy Toggle */}
-            <label className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white/8 border-2 border-cyan-light/30 hover:border-cyan-light/50 transition-all duration-200 cursor-pointer backdrop-blur-sm">
-              <input
-                type="checkbox"
-                checked={strategyEnabled}
-                onChange={(e) => setStrategyEnabled(e.target.checked)}
-                className="w-4 h-4 rounded accent-cyan-400"
-              />
-              <span className="text-sm font-semibold text-white">Strategy</span>
-            </label>
-
-            {/* Strategy Selector (visible when enabled) */}
-            {strategyEnabled && (
-              <select
-                value={selectedStrategy}
-                onChange={(e) => setSelectedStrategy(e.target.value as StrategyType)}
-                className="px-5 py-3 rounded-2xl text-sm font-semibold bg-white/10 text-white border-2 border-cyan-400/30 hover:border-cyan-400/50 backdrop-blur-sm transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer"
-              >
-                <option value="balanced" className="bg-slate-900 text-white font-medium">⚖️ Balanced</option>
-                <option value="speed" className="bg-slate-900 text-white font-medium">🚀 Speed</option>
-                <option value="quality" className="bg-slate-900 text-white font-medium">🧠 Quality</option>
-                <option value="cost" className="bg-slate-900 text-white font-medium">💰 Cost</option>
-              </select>
-            )}
-          </div>
-
-          {/* Model Dropdown */}
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            disabled={strategyEnabled}
-            className={`px-5 py-3 rounded-2xl text-sm font-semibold bg-white/8 text-white border-2 border-cyan-light/30 hover:border-cyan-light/50 hover:bg-white/12 transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer backdrop-blur-sm ${
-              strategyEnabled ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id} className="bg-slate-900 text-white font-medium">
-                {m.name} {m.speed}
-              </option>
-            ))}
-          </select>
-
-          {/* Auto-selected Model Display */}
-          {strategyEnabled && autoSelectedModel && (
-            <div className="text-xs text-cyan-300/90 font-mono bg-black/30 px-3 py-2 rounded-xl border border-cyan-400/30 backdrop-blur-sm">
-              🤖 Using: <span className="font-bold text-cyan-200">{autoSelectedModel}</span>
-            </div>
-          )}
-
-          {/* Tools Toggle */}
-          <button
-            onClick={() => setEnableTools(!enableTools)}
-            className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all duration-200 shadow-lg hover:shadow-lg flex items-center gap-2 border-2 ${
-              enableTools
-                ? 'bg-linear-to-r from-yellow/95 to-peach/95 text-gray-900 shadow-yellow/40 border-yellow/40 hover:shadow-yellow/60 hover:scale-105'
-                : 'bg-white/8 text-white/90 hover:bg-white/12 border-white/20 hover:border-white/40 backdrop-blur-sm'
-            }`}
-          >
-            <span className="text-lg">{enableTools ? '🛠️' : '❯❯❯❯'}</span>
-            <span className="font-bold">{enableTools ? 'Tools ON' : 'Fast Mode'}</span>
-          </button>
-
-          {/* Voice Mode Toggle */}
-          <button
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
-            className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all duration-200 shadow-lg hover:shadow-lg flex items-center gap-2 border-2 ${
-              voiceEnabled
-                ? 'bg-linear-to-r from-red-500/95 to-pink-500/95 text-white shadow-red-500/40 border-red-500/40 hover:shadow-red-500/60 hover:scale-105'
-                : 'bg-white/8 text-white/90 hover:bg-white/12 border-white/20 hover:border-white/40 backdrop-blur-sm'
-            }`}
-          >
-            <span className="text-lg">{voiceEnabled ? '🎙️' : '💬'}</span>
-            <span className="font-bold">{voiceEnabled ? 'Voice ON' : 'Text Mode'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Messages Container */}
-      <div className="h-[70vh] flex flex-col bg-black/20 backdrop-blur-xl rounded-3xl p-8 border border-cyan-light/10 shadow-inner">
-        <div className="flex-1 overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-teal/40 scrollbar-track-transparent space-y-5">
-
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-white/40">
-              <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-cyan-light/20 to-teal/20 border-2 border-cyan-light/20 animate-pulse shadow-lg" />
-              <p className="text-lg font-bold text-white/50 tracking-tight">Select your AI specialist</p>
-              <p className="text-xs mt-3 opacity-60 font-medium">Python • Next.js • Offline • Voice Ready</p>
-            </div>
-          ) : (
-            <>
-              {messages.map((msg: Message) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-3 duration-300 ease-out`}
-                >
-                  {msg.role === 'user' ? (
-                    // User Message
-                    <div className="max-w-2xl p-6 rounded-2xl shadow-lg border border-cyan-light/40 bg-linear-to-br from-teal/85 to-cyan-light/75 text-white hover:shadow-xl hover:shadow-teal/30 transition-all duration-200 hover:border-cyan-light/60 backdrop-blur-sm">
-                      <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm">
-                        {msg.content}
-                      </p>
+      {/* Main Chat Container - Professional Light Background */}
+      <div className="pt-24 pb-8 px-8 min-h-screen bg-linear-to-br from-slate-50 via-cyan-50/30 to-slate-50">
+        <div className="max-w-4xl mx-auto flex flex-col gap-6 h-[calc(100vh-8rem)]">
+          
+          {/* Messages Container */}
+          <div className="flex-1 flex flex-col bg-linear-to-br from-orange-50/95 to-rose-50/85 backdrop-blur-lg rounded-3xl p-8 border border-orange-200/60 shadow-inner shadow-orange-100/40 overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-orange-400/60 scrollbar-track-transparent space-y-5">
+              {messages.length === 0 ? (
+                // Empty State
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-cyan-light/30 to-teal/30 border-2 border-cyan-light/40 animate-pulse shadow-lg" />
+                  <p className="text-lg font-bold text-slate-500 tracking-tight">
+                    Select your AI specialist
+                  </p>
+                  <p className="text-xs mt-3 opacity-70 font-medium text-slate-400">
+                    Python • Next.js • Offline • Voice Ready
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Message List */}
+                  {messages.map((msg: Message) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${
+                        msg.role === 'user' ? 'justify-end' : 'justify-start'
+                      } animate-in slide-in-from-bottom-3 duration-300 ease-out`}
+                    >
+                      {msg.role === 'user' ? (
+                        // User Message - Right aligned with teal/cyan gradient
+                        <div className="max-w-2xl p-6 rounded-2xl shadow-lg border-2 border-teal/50 bg-linear-to-br from-teal/90 to-cyan-light/80 text-white hover:shadow-xl hover:shadow-teal/40 transition-all duration-200 hover:border-teal/70">
+                          <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm">
+                            {msg.content}
+                          </p>
+                        </div>
+                      ) : (
+                        // Assistant Message - Left aligned with slate background
+                        <div className="max-w-2xl p-6 rounded-2xl shadow-md border-2 border-slate-200 bg-slate-100/80 text-slate-900 hover:shadow-lg hover:shadow-teal/20 transition-all duration-200 hover:bg-slate-100 hover:border-slate-300">
+                          <p className="whitespace-pre-wrap leading-relaxed font-normal text-slate-900 text-sm">
+                            {msg.content}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    // Assistant Message
-                    <div className="max-w-2xl p-6 rounded-2xl shadow-md border border-white/15 bg-white/8 text-white hover:shadow-lg hover:shadow-yellow/20 transition-all duration-200 hover:bg-white/12 hover:border-white/25 backdrop-blur-sm prose prose-invert prose-headings:font-bold prose-headings:text-white prose-a:text-cyan-light prose-a:font-semibold hover:prose-a:text-cyan-light/80">
-                      <p className="whitespace-pre-wrap leading-relaxed font-normal text-white/90 text-sm">
-                        {msg.content}
-                      </p>
+                  ))}
+
+                  {/* Loading Indicator */}
+                  {isLoading && (
+                    <div className="flex justify-start animate-in slide-in-from-bottom-3 duration-300">
+                      <div className="p-6 rounded-2xl bg-slate-100/80 text-slate-900 border-2 border-slate-200 shadow-md">
+                        <div className="flex items-center gap-3">
+                          <div className="flex space-x-2">
+                            <div className="w-2.5 h-2.5 bg-cyan-light rounded-full animate-bounce [animation-delay:0s]" />
+                            <div className="w-2.5 h-2.5 bg-teal rounded-full animate-bounce [animation-delay:0.1s]" />
+                            <div className="w-2.5 h-2.5 bg-yellow rounded-full animate-bounce [animation-delay:0.2s]" />
+                          </div>
+                          <span className="text-xs font-medium text-slate-600 ml-1">
+                            {voiceEnabled ? 'Listening...' : 'Thinking...'} ({model.split(':')[0]})
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
-              ))}
+                </>
+              )}
 
-              {isLoading && (
-                <div className="flex justify-start animate-in slide-in-from-bottom-3 duration-300">
-                  <div className="p-6 rounded-2xl bg-white/8 text-white border border-white/15 shadow-md backdrop-blur-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="flex space-x-2">
-                        <div className="w-2.5 h-2.5 bg-cyan-light/70 rounded-full animate-bounce [animation-delay:0s]" />
-                        <div className="w-2.5 h-2.5 bg-teal/70 rounded-full animate-bounce [animation-delay:0.1s]" />
-                        <div className="w-2.5 h-2.5 bg-yellow/70 rounded-full animate-bounce [animation-delay:0.2s]" />
-                      </div>
-                      <span className="text-xs font-medium text-white/70 ml-1">
-                        {voiceEnabled ? 'Listening...' : 'Thinking...'} ({model.split(':')[0]})
-                      </span>
-                    </div>
-                  </div>
+              {/* Scroll Anchor */}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Input Area - Voice or Text Mode */}
+          {voiceEnabled ? (
+            // Voice Mode - Seamless Conversation Loop
+            <div className="flex flex-col items-center gap-6 py-6">
+              <ParticleOrb
+                state={voice.state === 'auto-resuming' ? 'listening' : (voice.state as any)}
+                audioLevel={voice.audioLevel}
+                beat={voice.audioFrequency.beat}
+                disabled={isLoading || !voiceEnabled}
+                onClick={() => {
+                  // Toggle voice on/off via the orb
+                  setVoiceEnabled(!voiceEnabled);
+                }}
+              />
+
+              {/* Voice Error Display */}
+              {voice.error && (
+                <div className="text-center text-red-600 text-sm font-medium">
+                  {voice.error}
                 </div>
               )}
-            </>
-          )}
 
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* Input Area - Voice or Text Mode */}
-      {voiceEnabled ? (
-        // Voice Mode - Seamless Conversation Loop
-        <div className="flex flex-col items-center gap-6 py-6">
-          <ParticleOrb
-            state={voice.state === 'auto-resuming' ? 'listening' : (voice.state as any)}
-            audioLevel={voice.audioLevel}
-            beat={voice.audioFrequency.beat}
-            disabled={isLoading || !voiceEnabled}
-            onClick={() => {
-              // Toggle voice on/off via the button
-              setVoiceEnabled(!voiceEnabled);
-            }}
-          />
-
-          {voice.error && (
-            <div className="text-center text-red-400 text-sm font-medium">
-              {voice.error}
+              {/* Auto-Resume Status */}
+              {voice.state === 'auto-resuming' && (
+                <div className="text-center text-teal/70 text-xs font-medium animate-pulse">
+                  Ready to listen...
+                </div>
+              )}
+            </div>
+          ) : (
+            // Text Mode - Input Area
+            <div className="flex gap-3 p-2 bg-white/80 backdrop-blur-lg rounded-2xl border-2 border-cyan-light/40 shadow-xl hover:border-cyan-light/60 transition-all duration-200 hover:shadow-2xl">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask about code, Web3, or anything... (Enter to send)"
+                className="flex-1 p-5 bg-transparent text-slate-900 placeholder-slate-400 border-0 resize-none focus:outline-none focus:ring-2 focus:ring-teal/60 rounded-xl min-h-11 max-h-32 font-medium text-sm transition-all duration-200"
+                rows={1}
+                disabled={isLoading}
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={isLoading || !input.trim()}
+                className="px-8 py-5 bg-linear-to-r from-yellow/90 to-peach/90 text-slate-900 font-bold rounded-xl shadow-lg hover:shadow-yellow/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap hover:scale-105 active:scale-95 text-sm tracking-wide border-2 border-slate-900/20"
+              >
+                Send
+              </button>
             </div>
           )}
 
-          {voice.state === 'auto-resuming' && (
-            <div className="text-center text-cyan-light/60 text-xs font-medium animate-pulse">
-              Ready to listen...
-            </div>
-          )}
+          {/* Footer - Status Info */}
+          <div className="text-xs text-slate-500 text-center pt-4 border-t border-cyan-light/20 font-medium tracking-widest">
+            🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages 
+            {manualMode && ` • ${
+              manualMode === 'learning' 
+                ? '🎓' 
+                : manualMode === 'code-review' 
+                ? '👁️' 
+                : '🧠'
+            } ${manualMode}`}
+            {voiceEnabled && ' • 🎤 Voice Active'}
+          </div>
         </div>
-      ) : (
-        // Text Mode
-        <div className="flex gap-3 p-2 bg-white/8 backdrop-blur-sm rounded-2xl border-2 border-cyan-light/20 shadow-lg hover:border-cyan-light/40 transition-all duration-200 hover:shadow-xl">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyPress}
-            placeholder="Ask about code, Web3, or anything... (Enter to send)"
-            className="flex-1 p-5 bg-transparent text-white placeholder-white/40 border-0 resize-none focus:outline-none focus:ring-2 focus:ring-teal/50 rounded-xl min-h-11 max-h-32 font-medium text-sm transition-all duration-200"
-            rows={1}
-            disabled={isLoading}
-          />
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={isLoading || !input.trim()}
-            className="px-8 py-5 bg-linear-to-r from-yellow/95 to-peach/95 text-gray-900 font-bold rounded-xl shadow-lg hover:shadow-yellow/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap hover:scale-105 active:scale-95 text-sm tracking-wide"
-          >
-            Send
-          </button>
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="text-xs text-white/40 text-center pt-4 border-t border-cyan-light/5 font-medium tracking-widest">
-        🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages {manualMode && `• ${manualMode === 'learning' ? '🎓' : manualMode === 'code-review' ? '👁️' : '🧠'} ${manualMode}`} {voiceEnabled && '• 🎤 Voice Active'}
       </div>
-    </div>
+    </>
   );
 }
