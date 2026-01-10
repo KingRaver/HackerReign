@@ -1,6 +1,7 @@
 // components/Chat.tsx
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import ParticleOrb from './ParticleOrb';
 import TopNav from './TopNav';
 import { useVoiceFlow } from '@/app/lib/voice/useVoiceFlow';
@@ -9,6 +10,18 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  feedback?: 'positive' | 'negative' | null;
+  decisionId?: string; // For tracking strategy decisions
+  learningContext?: {
+    theme?: string;
+    complexity?: number;
+    temperature?: number;
+    maxTokens?: number;
+    toolsEnabled?: boolean;
+    modelUsed?: string;
+    responseTime?: number;
+    tokensUsed?: number;
+  };
 }
 
 type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost';
@@ -92,6 +105,32 @@ export default function Chat() {
   }, []);
 
   /**
+   * Strip markdown formatting for TTS (so it sounds natural when spoken)
+   */
+  const stripMarkdownForSpeech = useCallback((text: string): string => {
+    return text
+      // Remove code blocks entirely
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove inline code
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove bold/italic
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Remove links but keep text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove headers
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove list markers
+      .replace(/^[-*+]\s+/gm, '')
+      .replace(/^\d+\.\s+/gm, '')
+      // Clean up extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }, []);
+
+  /**
    * Send message to LLM (called by text input or voice transcript)
    */
   const handleSendMessage = async (textToSend?: string) => {
@@ -130,12 +169,30 @@ export default function Chat() {
       if (!response.ok) throw new Error('API error');
 
       const aiId = (Date.now() + 1).toString();
+      const requestStartTime = Date.now();
 
       if (enableTools) {
         // Non-streaming response (tools enabled)
         const data = await response.json();
         const content = data.content || '';
-        const aiMsg: Message = { id: aiId, role: 'assistant', content };
+        const responseTime = Date.now() - requestStartTime;
+
+        const aiMsg: Message = {
+          id: aiId,
+          role: 'assistant',
+          content,
+          decisionId: data.decisionId, // Capture decision ID for feedback
+          learningContext: strategyEnabled ? {
+            theme: data.metadata?.detectedTheme,
+            complexity: data.metadata?.complexityScore,
+            temperature: data.metadata?.temperature,
+            maxTokens: data.metadata?.maxTokens,
+            toolsEnabled: enableTools,
+            modelUsed: data.autoSelectedModel || model,
+            responseTime,
+            tokensUsed: Math.floor(content.length / 4) // Rough estimate
+          } : undefined
+        };
 
         setMessages(prev => [...prev, aiMsg]);
 
@@ -144,13 +201,14 @@ export default function Chat() {
           setAutoSelectedModel(data.autoSelectedModel);
         }
 
-        // Speak response if voice enabled
+        // Speak response if voice enabled (strip markdown for natural speech)
         if (voiceEnabled && content) {
-          await voice.speakResponse(content, true); // true = auto-resume after speaking
+          const cleanedContent = stripMarkdownForSpeech(content);
+          await voice.speakResponse(cleanedContent, true); // true = auto-resume after speaking
         }
       } else {
         // Streaming response (tools disabled)
-        const aiMsg: Message = { id: aiId, role: 'assistant', content: '' };
+        const aiMsg: Message = { id: aiId, role: 'assistant', content: '', decisionId: undefined };
         setMessages(prev => [...prev, aiMsg]);
 
         if (response.body) {
@@ -192,9 +250,10 @@ export default function Chat() {
             reader.releaseLock();
           }
 
-          // Speak full response if voice enabled
+          // Speak full response if voice enabled (strip markdown for natural speech)
           if (voiceEnabled && fullContent) {
-            await voice.speakResponse(fullContent, true); // true = auto-resume after speaking
+            const cleanedContent = stripMarkdownForSpeech(fullContent);
+            await voice.speakResponse(cleanedContent, true); // true = auto-resume after speaking
           }
         }
       }
@@ -216,6 +275,42 @@ export default function Chat() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  // Handle user feedback for continuous learning
+  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message || !message.decisionId) return;
+
+    // Find the corresponding user message for context
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+
+    // Update UI immediately
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId ? { ...msg, feedback } : msg
+    ));
+
+    // Send feedback to backend for learning
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          decisionId: message.decisionId,
+          feedback,
+          content: message.content,
+          timestamp: new Date().toISOString(),
+          // Learning context for continuous improvement
+          userMessage: userMessage?.content,
+          ...message.learningContext
+        })
+      });
+      console.log('[Feedback] Feedback submitted successfully with learning context');
+    } catch (error) {
+      console.error('[Feedback] Error submitting feedback:', error);
     }
   };
 
@@ -271,16 +366,73 @@ export default function Chat() {
                       {msg.role === 'user' ? (
                         // User Message - Right aligned with teal/cyan gradient
                         <div className="max-w-2xl p-6 rounded-2xl shadow-lg border-2 border-teal/50 bg-linear-to-br from-teal/90 to-cyan-light/80 text-white hover:shadow-xl hover:shadow-teal/40 transition-all duration-200 hover:border-teal/70">
-                          <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm">
-                            {msg.content}
-                          </p>
+                          <div className="prose prose-sm prose-invert max-w-none">
+                            <ReactMarkdown
+                              components={{
+                                p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm mb-2 last:mb-0">{children}</p>,
+                                code: ({children}) => <code className="text-cyan-light bg-white/20 px-1.5 py-0.5 rounded text-xs">{children}</code>,
+                                pre: ({children}) => <pre className="bg-slate-900/50 text-cyan-light p-3 rounded-lg overflow-x-auto text-xs my-2">{children}</pre>
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       ) : (
                         // Assistant Message - Left aligned with slate background
-                        <div className="max-w-2xl p-6 rounded-2xl shadow-md border-2 border-slate-200 bg-slate-100/80 text-slate-900 hover:shadow-lg hover:shadow-teal/20 transition-all duration-200 hover:bg-slate-100 hover:border-slate-300">
-                          <p className="whitespace-pre-wrap leading-relaxed font-normal text-slate-900 text-sm">
-                            {msg.content}
-                          </p>
+                        <div className="max-w-2xl">
+                          <div className="p-6 rounded-2xl shadow-md border-2 border-slate-200 bg-slate-100/80 text-slate-900 hover:shadow-lg hover:shadow-teal/20 transition-all duration-200 hover:bg-slate-100 hover:border-slate-300">
+                            <div className="prose prose-sm prose-slate max-w-none">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-normal text-slate-900 text-sm mb-2 last:mb-0">{children}</p>,
+                                  code: ({children}) => <code className="text-teal bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                  pre: ({children}) => <pre className="bg-slate-800 text-white p-4 rounded-lg overflow-x-auto text-xs my-3 border-2 border-slate-300">{children}</pre>,
+                                  ul: ({children}) => <ul className="list-disc list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ul>,
+                                  ol: ({children}) => <ol className="list-decimal list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ol>,
+                                  li: ({children}) => <li className="text-slate-900">{children}</li>,
+                                  h1: ({children}) => <h1 className="text-lg font-bold text-slate-900 mt-3 mb-2">{children}</h1>,
+                                  h2: ({children}) => <h2 className="text-base font-bold text-slate-900 mt-2 mb-1">{children}</h2>,
+                                  h3: ({children}) => <h3 className="text-sm font-bold text-slate-900 mt-2 mb-1">{children}</h3>,
+                                  strong: ({children}) => <strong className="font-bold text-slate-900">{children}</strong>,
+                                  em: ({children}) => <em className="italic text-slate-700">{children}</em>,
+                                  a: ({children, href}) => <a href={href} className="text-teal hover:text-cyan-light underline" target="_blank" rel="noopener noreferrer">{children}</a>
+                                }}
+                              >
+                                {msg.content}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+
+                          {/* Feedback Buttons - Continuous Learning UI */}
+                          {strategyEnabled && msg.decisionId && (
+                            <div className="flex gap-2 mt-2 ml-2">
+                              <button
+                                onClick={() => handleFeedback(msg.id, 'positive')}
+                                disabled={msg.feedback !== undefined}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                                  msg.feedback === 'positive'
+                                    ? 'bg-green-500 text-white shadow-md'
+                                    : 'bg-slate-200 text-slate-600 hover:bg-green-100 hover:text-green-700 disabled:opacity-40'
+                                }`}
+                                title="Good response - helps the AI learn"
+                              >
+                                👍 Helpful
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(msg.id, 'negative')}
+                                disabled={msg.feedback !== undefined}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                                  msg.feedback === 'negative'
+                                    ? 'bg-red-500 text-white shadow-md'
+                                    : 'bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-700 disabled:opacity-40'
+                                }`}
+                                title="Poor response - helps the AI improve"
+                              >
+                                👎 Not Helpful
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

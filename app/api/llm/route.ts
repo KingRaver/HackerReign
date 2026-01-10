@@ -69,20 +69,15 @@ export async function POST(req: NextRequest) {
       manualModeOverride
     );
 
-    // Get base system prompt from domain context, but add natural language rules
+    // Get base system prompt from domain context
     let systemPrompt = llmContext.systemPrompt + `
 
-CRITICAL OUTPUT FORMAT RULES:
-- NO markdown syntax (no *, #, \`, [], etc)
-- NO code blocks or backticks
-- NO lists with bullets or numbers
-- NO formatting symbols
-- Just plain conversational text
-
-For code: write it inline like this -> print("hello") or useState(0)
-For explanations: use natural sentences with commas and periods
-
-Keep responses 1-3 sentences per concept. Be direct and helpful.`;
+Keep responses clear, concise, and helpful. Use markdown formatting where appropriate:
+- Use code blocks with \`\`\` for code examples
+- Use inline code with \` for short code snippets
+- Use **bold** for emphasis
+- Use lists for structured information
+- Keep responses 1-3 sentences per concept when possible`;
 
     let temperature = llmContext.temperature;
     let maxTokens = llmContext.maxTokens;
@@ -494,11 +489,18 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
       }
     }
 
-    // Return response with conversation ID and auto-selected model
+    // Return response with conversation ID, auto-selected model, decision ID, and learning metadata
     return NextResponse.json({
       ...currentCompletion.choices[0].message,
       conversationId: currentConversationId,
       autoSelectedModel: strategyEnabled ? model : undefined,
+      decisionId: strategyEnabled && strategyDecision ? strategyDecision.id : undefined,
+      metadata: strategyEnabled && strategyDecision ? {
+        detectedTheme: strategyDecision.metadata?.detectedTheme,
+        complexityScore: strategyDecision.complexityScore,
+        temperature: temperature,
+        maxTokens: maxTokens
+      } : undefined
     });
   } catch (error: any) {
     console.error('[LLM API] Error:', error);
