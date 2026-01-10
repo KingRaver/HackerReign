@@ -138,7 +138,8 @@ export class AdaptiveStrategy extends BaseStrategy {
       userFeedback: feedback,
       responseTime: 0, // Filled by caller
       tokensUsed: 0,
-      errorOccurred: feedback === 'negative'
+      errorOccurred: feedback === 'negative',
+      retryCount: 0
     });
   }
 }
