@@ -40,8 +40,52 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+venv/
+env/
+ENV/
+
 # data directories
 .data/
-*.db
+data/*.db
 *.db-shm
 *.db-wal
+*.log
+
+# machine learning models
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.onnx
+*.pb
+
+# ChromaDB
+chroma/
+*.chroma
+
+# IDEs and editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/css-custom-data.json
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS files
+Thumbs.db
+.AppleDouble
+.LSOverride

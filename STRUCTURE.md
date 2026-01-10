@@ -8,8 +8,13 @@ hackerreign/
 │
 ├── app/                          # Next.js App Router directory
 │   ├── api/                      # API routes
+│   │   ├── dl-codegen/           # Deep learning code generation endpoints
+│   │   │   ├── train/            # Model training endpoint
+│   │   │   │   └── route.ts      # Train LSTM model on code samples
+│   │   │   └── predict/          # Code prediction endpoint
+│   │   │       └── route.ts      # Generate code completions using trained model
 │   │   ├── llm/                  # LLM endpoint
-│   │   │   └── route.ts          # LLM API handler with tool support
+│   │   │   └── route.ts          # LLM API handler with tool support & strategy selection
 │   │   ├── piper-tts/            # Piper TTS endpoint
 │   │   │   └── route.ts          # Server-side Piper TTS with Python CLI integration
 │   │   ├── stt/                  # Speech-to-Text endpoint
@@ -17,6 +22,12 @@ hackerreign/
 │   │   └── tts/                  # Text-to-Speech endpoint
 │   │       └── route.ts          # TTS API (client-side synthesis instructions)
 │   ├── lib/                      # Shared utilities and libraries
+│   │   ├── dl-codegen/           # Deep learning code generation system
+│   │   │   ├── index.ts          # Main exports and public API
+│   │   │   ├── types.ts          # TypeScript type definitions
+│   │   │   ├── preprocess.ts     # Text tokenization and sequence preparation
+│   │   │   ├── model.ts          # LSTM neural network architecture (TensorFlow.js)
+│   │   │   └── train.ts          # Training loop and model persistence
 │   │   ├── domain/               # Domain context detection system
 │   │   │   ├── contextDetector.ts  # Detects mode, file type, domain, complexity
 │   │   │   ├── modeDefinitions.ts  # Interaction mode system prompts
@@ -29,19 +40,46 @@ hackerreign/
 │   │   │   │   ├── index.ts      # SQLite storage singleton management
 │   │   │   │   └── sqlite.ts     # SQLite implementation for conversations
 │   │   │   ├── rag/              # Retrieval-Augmented Generation
+│   │   │   │   ├── index.ts      # RAG exports
 │   │   │   │   ├── embeddings.ts # Ollama embeddings integration
 │   │   │   │   └── retrieval.ts  # ChromaDB vector search
 │   │   │   ├── migrations/       # Database schema migrations
-│   │   │   │   └── 001_initial_schema.sql
+│   │   │   │   ├── init.sql      # Initial schema
+│   │   │   │   └── 002_strategy_analytics.sql # Strategy analytics tables
 │   │   │   ├── README.md         # Memory system documentation
 │   │   │   ├── INTEGRATION_GUIDE.md  # Integration instructions
 │   │   │   └── FILE_MANIFEST.md  # File descriptions
+│   │   ├── strategy/             # LLM strategy selection and orchestration
+│   │   │   ├── types.ts          # Strategy type definitions and interfaces
+│   │   │   ├── context.ts        # Request context analysis
+│   │   │   ├── baseStrategy.ts   # Abstract base strategy class
+│   │   │   ├── manager.ts        # Strategy registry and selection logic
+│   │   │   ├── orchestrator.ts   # Multi-strategy orchestration
+│   │   │   ├── implementations/  # Concrete strategy implementations
+│   │   │   │   ├── speedStrategy.ts      # Fast responses (smaller models)
+│   │   │   │   ├── qualityStrategy.ts    # High-quality outputs (larger models)
+│   │   │   │   ├── costStrategy.ts       # Cost-optimized (efficient models)
+│   │   │   │   ├── complexityStrategy.ts # Task complexity-based selection
+│   │   │   │   └── adaptiveStrategy.ts   # Learning-based adaptation
+│   │   │   ├── workflows/        # Multi-model workflow patterns
+│   │   │   │   ├── chain.ts      # Sequential model chaining
+│   │   │   │   └── ensemble.ts   # Parallel ensemble voting
+│   │   │   ├── resources/        # Resource management
+│   │   │   │   ├── monitor.ts    # System resource monitoring
+│   │   │   │   └── constraints.ts # Resource constraint enforcement
+│   │   │   └── analytics/        # Strategy performance tracking
+│   │   │       └── tracker.ts    # SQLite-based analytics
 │   │   ├── voice/                # Voice interaction system
 │   │   │   ├── useVoiceInput.ts  # Speech-to-Text hook (Web Speech API)
 │   │   │   ├── useVoiceOutput.ts # Text-to-Speech hook (Web Speech API + Piper TTS)
 │   │   │   ├── useVoiceFlow.ts   # Unified voice flow orchestration hook
 │   │   │   ├── voiceStateManager.ts # Centralized state management for voice flow
-│   │   │   └── audioAnalyzer.ts  # Audio frequency analysis and beat detection
+│   │   │   ├── audioAnalyzer.ts  # Audio frequency analysis and beat detection
+│   │   │   ├── audioRecorder.ts  # Audio recording utilities
+│   │   │   ├── README.md         # Voice system documentation
+│   │   │   ├── QUICK_TEST.md     # Testing guide
+│   │   │   ├── SPEECH_DETECTION_FIX.md # Speech detection troubleshooting
+│   │   │   └── VOICE_OPTIMIZATION.md # Performance optimization guide
 │   │   └── tools/                # LLM tool integration
 │   │       ├── index.ts          # Tool exports and configuration
 │   │       ├── definitions.ts    # Tool JSON schemas
@@ -60,7 +98,20 @@ hackerreign/
 │   ├── VoiceOrb.tsx              # Canvas-based 2D voice visualization component
 │   └── ParticleOrb.tsx           # Three.js 3D particle visualization component
 │
+├── .data/                        # Runtime data storage (not in git)
+│   ├── chroma/                   # ChromaDB vector database
+│   ├── chroma.log                # ChromaDB logs
+│   ├── dl-model.pt               # Trained deep learning model
+│   ├── hackerreign.db            # Main SQLite database
+│   ├── hackerreign.db-shm        # SQLite shared memory
+│   └── hackerreign.db-wal        # SQLite write-ahead log
+│
+├── data/                         # Application data
+│   └── strategy_analytics.db     # Strategy performance analytics database
+│
 ├── public/                       # Static assets
+│   ├── codesnippets.json         # Code snippet library
+│   ├── favicon.ico               # Site favicon
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── next.svg
@@ -69,8 +120,13 @@ hackerreign/
 │
 ├── .env.local                    # Environment variables (not in git)
 ├── .gitignore                    # Git ignore rules
+├── CLEANING.md                   # Code cleanup and refactoring notes
+├── FUTURE.md                     # Future features and roadmap
+├── LICENSE.md                    # Project license
+├── MODELS.md                     # LLM models reference guide
 ├── OUTLINE.md                    # Project outline/planning
 ├── README.md                     # Project documentation
+├── STRUCTURE.md                  # This file - project structure reference
 ├── eslint.config.mjs             # ESLint configuration
 ├── global.d.ts                   # Global TypeScript declarations
 ├── next-env.d.ts                 # Next.js TypeScript declarations
@@ -92,6 +148,30 @@ Server-side API endpoints. Currently hosts the LLM integration with tool support
 
 ### `/app/lib`
 Shared utilities and libraries used across the application.
+
+#### `/app/lib/dl-codegen`
+Deep learning-based code generation system using TensorFlow.js:
+- **index.ts** - Main exports and public API surface
+- **types.ts** - TypeScript type definitions for model, training, and prediction
+- **preprocess.ts** - Text tokenization, vocabulary building, and sequence padding
+- **model.ts** - LSTM neural network architecture with embedding and dense layers
+- **train.ts** - Training loop with batch processing and model serialization
+
+**Features:**
+- LSTM-based sequence-to-sequence learning for code completion
+- Character-level tokenization with configurable vocabulary
+- TensorFlow.js for browser and Node.js compatibility
+- Model persistence to filesystem (.data/dl-model.pt)
+- Batch training with configurable epochs and batch size
+- Temperature-based sampling for diverse predictions
+
+**Dependencies:**
+- `@tensorflow/tfjs-node` - TensorFlow.js for Node.js
+- Training data stored in public/codesnippets.json
+
+**API Endpoints:**
+- POST `/api/dl-codegen/train` - Train model on code samples
+- POST `/api/dl-codegen/predict` - Generate code completions
 
 #### `/app/lib/domain`
 Domain-aware context detection and system prompt generation:
@@ -137,6 +217,49 @@ Memory and RAG (Retrieval-Augmented Generation) system:
 **Dependencies:**
 - `better-sqlite3` - SQLite database driver
 - `chromadb` - Vector database for semantic search
+
+#### `/app/lib/strategy`
+LLM strategy selection and multi-model orchestration system:
+- **types.ts** - Core type definitions (Strategy, RequestContext, StrategyResult, etc.)
+- **context.ts** - Request context analysis (complexity, urgency, domain detection)
+- **baseStrategy.ts** - Abstract base class for all strategy implementations
+- **manager.ts** - Strategy registry, selection logic, and lifecycle management
+- **orchestrator.ts** - Multi-strategy coordination (fallbacks, retries, consensus)
+
+**Strategy Implementations** (`implementations/`):
+- **speedStrategy.ts** - Optimizes for fast response times using lightweight models
+- **qualityStrategy.ts** - Maximizes output quality with larger, more capable models
+- **costStrategy.ts** - Minimizes computational cost and resource usage
+- **complexityStrategy.ts** - Selects models based on task complexity analysis
+- **adaptiveStrategy.ts** - Learns from past performance to improve selection over time
+
+**Workflow Patterns** (`workflows/`):
+- **chain.ts** - Sequential model chaining (e.g., draft → refine → polish)
+- **ensemble.ts** - Parallel ensemble voting for consensus-based outputs
+
+**Resource Management** (`resources/`):
+- **monitor.ts** - Real-time system resource monitoring (CPU, memory, model availability)
+- **constraints.ts** - Resource constraint enforcement and threshold management
+
+**Analytics** (`analytics/`):
+- **tracker.ts** - SQLite-based performance tracking and analytics
+  - Strategy effectiveness metrics
+  - Model performance comparison
+  - Request pattern analysis
+  - Database: data/strategy_analytics.db
+
+**Features:**
+- Automatic model selection based on task characteristics
+- Multi-model orchestration with fallback chains
+- Performance-based learning and adaptation
+- Resource-aware scheduling and throttling
+- Comprehensive analytics and monitoring
+- Support for custom strategy implementations
+
+**Dependencies:**
+- SQLite for analytics persistence (data/strategy_analytics.db)
+- Integrates with domain detection system
+- Works with all Ollama-compatible models
 
 #### `/app/lib/voice`
 Voice interaction system for speech input/output with unified flow orchestration:
@@ -231,6 +354,70 @@ See `package.json` for available npm scripts:
 - `npm run type-check` - Check TypeScript types
 
 ## Recent Updates
+
+### LLM Strategy Selection System (January 2026)
+- **Strategy Framework**: Intelligent model selection based on task characteristics
+  - Five core strategies: Speed, Quality, Cost, Complexity, Adaptive
+  - Pluggable architecture with abstract base class
+  - Strategy registry with priority-based selection
+  - Request context analysis (complexity, urgency, domain)
+
+- **Multi-Model Orchestration**: Workflows for combining multiple models
+  - Chain workflow: Sequential processing (draft → refine → verify)
+  - Ensemble workflow: Parallel voting for consensus
+  - Fallback chains with automatic retry logic
+  - Timeout and error handling
+
+- **Resource Management**: System-aware resource monitoring
+  - Real-time CPU and memory tracking
+  - Model availability checking
+  - Resource constraint enforcement
+  - Throttling and load balancing
+
+- **Analytics & Learning**: Performance tracking and adaptation
+  - SQLite-based analytics (data/strategy_analytics.db)
+  - Strategy effectiveness metrics
+  - Model performance comparison
+  - Adaptive learning from historical data
+  - Request pattern analysis
+
+- **Integration**: Works seamlessly with existing systems
+  - Domain detection integration for context-aware selection
+  - Compatible with all Ollama models
+  - Fallback to default model on failure
+  - Migration support (002_strategy_analytics.sql)
+
+**Example Use Cases:**
+- Quick answers → Speed Strategy → llama3.2:3b
+- Complex code review → Quality Strategy → deepseek-coder-v2:16b
+- Resource-constrained → Cost Strategy → codegemma:7b
+- Multi-file refactor → Chain Workflow → qwen2.5-coder:7b → codestral:22b
+- Consensus needed → Ensemble Workflow → 3 models vote
+
+### Deep Learning Code Generation (January 2026)
+- **LSTM Neural Network**: Browser and Node.js compatible code generation
+  - Character-level tokenization and vocabulary building
+  - Embedding layer + LSTM layers + Dense output
+  - Temperature-based sampling for diversity
+  - Model persistence to .data/dl-model.pt
+
+- **Training Pipeline**: Full training infrastructure
+  - POST /api/dl-codegen/train endpoint
+  - Batch processing with configurable parameters
+  - Training data from public/codesnippets.json
+  - TensorFlow.js integration (@tensorflow/tfjs-node)
+
+- **Code Prediction**: Real-time code completion
+  - POST /api/dl-codegen/predict endpoint
+  - Context-aware sequence generation
+  - Configurable prediction length
+  - Fast inference for interactive use
+
+**Features:**
+- Offline code completion without API calls
+- Customizable training on project-specific code
+- Lightweight and fast predictions
+- Privacy-preserving (all local)
 
 ### Domain Context System (January 2026)
 - **Context Detection**: Automatic mode and domain detection from user input
@@ -349,6 +536,9 @@ See `package.json` for available npm scripts:
 - **AI SDKs**:
   - `ai` (v6.0.20) - Vercel AI SDK for LLM integration
   - `openai` (v6.15.0) - OpenAI SDK for GPT models
+- **Machine Learning**:
+  - `@tensorflow/tfjs-node` - TensorFlow.js for Node.js (LSTM code generation)
+  - `@tensorflow/tfjs` - TensorFlow.js for browser (optional)
 - **Python Runtime**: `pyodide` (v0.29.1) - Python in the browser for code execution
 - **Schema Validation**: `zod` (v4.3.5) - Runtime type checking and validation
 - **Math**: `mathjs` (v15.1.0) - Calculator tool implementation

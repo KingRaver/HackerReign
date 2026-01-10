@@ -70,13 +70,13 @@ An advanced Next.js-powered AI chat application with local LLM integration via O
 
 ### 🧪 Deep Learning Code Generation
 - **Neural Network Predictions**: TensorFlow.js-powered code completion
-  - Transformer-based sequence-to-sequence architecture
+  - LSTM-based sequence-to-sequence architecture with embedding layers
   - Character-level tokenization for flexibility
   - Trained on code patterns and common completions
 - **Context-Aware**: Uses conversation history for better predictions
-- **Confidence Scoring**: Only suggests high-confidence predictions (>70%)
-- **Embedding System**: Shared cache with RAG for efficiency
-- **Training Pipeline**: Continuous learning from usage patterns
+- **Temperature Sampling**: Configurable diversity in predictions
+- **Model Persistence**: Trained models saved to .data/dl-model.pt
+- **Training Pipeline**: Batch processing with configurable epochs
 
 ### 🛠️ Tool Support
 - **Built-in Tools**: Weather queries, calculations (mathjs), safe code execution (vm2 sandbox)
@@ -350,10 +350,12 @@ hackerreign/
 │   │   │   ├── voiceStateManager.ts  # Centralized state
 │   │   │   └── audioAnalyzer.ts      # FFT analysis
 │   │   │
-│   │   ├── dl-codegen/               # Deep learning predictions
-│   │   │   ├── model/                # TensorFlow.js model
-│   │   │   ├── trainer.ts            # Training pipeline
-│   │   │   └── predictor.ts          # Inference engine
+│   │   ├── dl-codegen/               # Deep learning code generation
+│   │   │   ├── index.ts              # Public API exports
+│   │   │   ├── types.ts              # TypeScript type definitions
+│   │   │   ├── preprocess.ts         # Tokenization and sequence prep
+│   │   │   ├── model.ts              # LSTM neural network architecture
+│   │   │   └── train.ts              # Training loop and persistence
 │   │   │
 │   │   └── tools/                    # LLM tool support
 │   │       ├── definitions.ts        # Tool schemas
@@ -364,17 +366,24 @@ hackerreign/
 │
 ├── components/
 │   ├── Chat.tsx                      # Main chat component
-│   ├── VoiceOrb.tsx                  # 2D audio visualization
-│   ├── ParticleOrb.tsx               # 3D particle system
-│   └── MessageList.tsx               # Message rendering
+│   ├── VoiceOrb.tsx                  # 2D canvas audio visualization
+│   └── ParticleOrb.tsx               # 3D Three.js particle system
 │
-├── data/                             # Local data storage
+├── .data/                            # Runtime data storage (not in git)
+│   ├── chroma/                       # ChromaDB vector database
+│   ├── chroma.log                    # ChromaDB logs
+│   ├── dl-model.pt                   # Trained deep learning model
 │   ├── hackerreign.db                # SQLite conversation history
-│   ├── chroma/                       # Vector database
-│   └── strategy_analytics.db         # Strategy performance metrics
+│   ├── hackerreign.db-shm            # SQLite shared memory
+│   └── hackerreign.db-wal            # SQLite write-ahead log
+│
+├── data/                             # Application data
+│   └── strategy_analytics.db         # Strategy performance analytics
 │
 └── public/
-    └── models/                       # TensorFlow.js model files
+    ├── codesnippets.json             # Code snippet training data
+    ├── favicon.ico                   # Site favicon
+    └── *.svg                         # Static assets
 ```
 
 ## API Endpoints
@@ -501,8 +510,8 @@ const context = await buildContextForLLMCall(
 
 **Predictions not appearing:**
 1. Check `ENABLE_DL_PREDICTIONS` is not false
-2. Ensure model files exist in `public/models/`
-3. Verify confidence threshold (default >70%)
+2. Ensure model file exists at `.data/dl-model.pt`
+3. Train model first using POST /api/dl-codegen/train
 4. Review console for `[DL]` error messages
 
 ## Development Scripts
@@ -517,11 +526,15 @@ npm run type-check  # Check TypeScript types
 
 ## Documentation
 
-- **Strategy System**: [app/lib/strategy/README.md](app/lib/strategy/README.md)
-- **Domain Context**: [app/lib/domain/README.md](app/lib/domain/README.md)
+- **Project Structure**: [STRUCTURE.md](STRUCTURE.md) - Complete project organization
+- **LLM Models Guide**: [MODELS.md](MODELS.md) - Model selection and configuration
+- **Future Roadmap**: [FUTURE.md](FUTURE.md) - Planned features and enhancements
 - **Memory & RAG**: [app/lib/memory/README.md](app/lib/memory/README.md)
 - **Memory Integration**: [app/lib/memory/INTEGRATION_GUIDE.md](app/lib/memory/INTEGRATION_GUIDE.md)
-- **Project Structure**: [STRUCTURE.md](STRUCTURE.md)
+- **Memory File Manifest**: [app/lib/memory/FILE_MANIFEST.md](app/lib/memory/FILE_MANIFEST.md)
+- **Voice System**: [app/lib/voice/README.md](app/lib/voice/README.md)
+- **Voice Quick Test**: [app/lib/voice/QUICK_TEST.md](app/lib/voice/QUICK_TEST.md)
+- **Voice Optimization**: [app/lib/voice/VOICE_OPTIMIZATION.md](app/lib/voice/VOICE_OPTIMIZATION.md)
 
 ## Recent Updates
 
