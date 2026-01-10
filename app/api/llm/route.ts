@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMemoryManager } from '../../lib/memory';
 import { getTools, executeTools } from '../../lib/tools';
 import { buildContextForLLMCall } from '../../lib/domain/contextBuilder';
+import { strategyManager } from '@/app/lib/strategy/manager';
+import type { StrategyDecision, StrategyType } from '@/app/lib/strategy/types';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 
@@ -13,17 +15,32 @@ const openai = new OpenAI({
 export const runtime = 'nodejs'; // Required for SQLite/Chroma
 
 export async function POST(req: NextRequest) {
+  // Declare strategy variables outside try block for error handling
+  let strategyEnabled = false;
+  let strategyDecision: StrategyDecision | null = null;
+  let strategyStartTime = Date.now();
+
   try {
     const {
-      model = 'qwen2.5-coder:7b-instruct-q5_K_M',
+      model: requestedModel = 'qwen2.5-coder:7b-instruct-q5_K_M',
       messages,
-      stream = true,
-      enableTools = false,
+      stream: requestedStream = true,
+      enableTools: requestedEnableTools = false,
       conversationId = null,
       useMemory = true, // Enable memory augmentation
       filePath, // Optional: file path for domain detection
       manualModeOverride, // Optional: user-selected mode ('learning' | 'code-review' | 'expert')
+      strategyEnabled: requestStrategyEnabled = false, // NEW: Strategy system toggle
+      selectedStrategy = 'balanced', // NEW: Which strategy to use
     } = await req.json();
+
+    // Update outer scope variables
+    strategyEnabled = requestStrategyEnabled;
+
+    // Initialize with requested values (may be overridden by strategy)
+    let model = requestedModel;
+    let stream = requestedStream;
+    let enableTools = requestedEnableTools;
 
     const memory = getMemoryManager();
 
@@ -69,6 +86,45 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
 
     let temperature = llmContext.temperature;
     let maxTokens = llmContext.maxTokens;
+
+    // ============================================================
+    // STRATEGY EXECUTION: Auto-select model and parameters
+    // ============================================================
+    strategyStartTime = Date.now();
+
+    if (strategyEnabled) {
+      try {
+        console.log(`[Strategy] Executing strategy: ${selectedStrategy}`);
+
+        strategyDecision = await strategyManager.executeStrategy(
+          selectedStrategy as StrategyType,
+          {
+            userMessage: lastUserMessage?.content || '',
+            conversationHistory: messages.slice(-10),
+            manualModeOverride,
+            manualModelOverride: requestedModel
+          }
+        );
+
+        // Override with strategy decision
+        model = strategyDecision.selectedModel;
+        temperature = strategyDecision.temperature;
+        maxTokens = strategyDecision.maxTokens;
+        stream = strategyDecision.streaming;
+        enableTools = strategyDecision.enableTools;
+
+        const strategyTime = Date.now() - strategyStartTime;
+        console.log(`[Strategy] Decision made in ${strategyTime}ms:`, {
+          model: strategyDecision.selectedModel,
+          reasoning: strategyDecision.reasoning,
+          confidence: strategyDecision.confidence,
+          complexityScore: strategyDecision.complexityScore
+        });
+      } catch (error) {
+        console.error('[Strategy] Error executing strategy:', error);
+        // Continue with original values if strategy fails
+      }
+    }
 
     // ============================================================
     // MEMORY AUGMENTATION: Retrieve past context
@@ -251,6 +307,26 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
                 }
               }
 
+              // ============================================================
+              // LOG STRATEGY OUTCOME (streaming)
+              // ============================================================
+              if (strategyEnabled && strategyDecision) {
+                try {
+                  const responseTime = Date.now() - strategyStartTime;
+                  await strategyManager.logOutcome(strategyDecision.id, {
+                    decisionId: strategyDecision.id,
+                    responseQuality: 0.8, // Default quality, can be improved with feedback
+                    responseTime: responseTime,
+                    tokensUsed: fullContent.length / 4, // Rough estimate
+                    errorOccurred: false,
+                    retryCount: 0
+                  });
+                  console.log(`[Strategy] Outcome logged for decision ${strategyDecision.id}`);
+                } catch (error) {
+                  console.warn('[Strategy] Error logging outcome:', error);
+                }
+              }
+
               controller.close();
             } catch (error) {
               console.error('[Stream] Error:', error);
@@ -396,13 +472,54 @@ Keep responses 1-3 sentences per concept. Be direct and helpful.`;
       console.warn('[Memory] Error saving assistant message:', error);
     }
 
-    // Return response with conversation ID
+    // ============================================================
+    // LOG STRATEGY OUTCOME (non-streaming)
+    // ============================================================
+    if (strategyEnabled && strategyDecision) {
+      try {
+        const responseTime = Date.now() - strategyStartTime;
+        const tokensUsed = currentCompletion.usage?.total_tokens || assistantMessage.length / 4;
+
+        await strategyManager.logOutcome(strategyDecision.id, {
+          decisionId: strategyDecision.id,
+          responseQuality: 0.8, // Default quality, can be improved with feedback
+          responseTime: responseTime,
+          tokensUsed: tokensUsed,
+          errorOccurred: false,
+          retryCount: 0
+        });
+        console.log(`[Strategy] Outcome logged for decision ${strategyDecision.id}`);
+      } catch (error) {
+        console.warn('[Strategy] Error logging outcome:', error);
+      }
+    }
+
+    // Return response with conversation ID and auto-selected model
     return NextResponse.json({
       ...currentCompletion.choices[0].message,
       conversationId: currentConversationId,
+      autoSelectedModel: strategyEnabled ? model : undefined,
     });
   } catch (error: any) {
     console.error('[LLM API] Error:', error);
+
+    // Log error outcome if strategy was used
+    if (strategyEnabled && strategyDecision) {
+      try {
+        const responseTime = Date.now() - strategyStartTime;
+        await strategyManager.logOutcome(strategyDecision.id, {
+          decisionId: strategyDecision.id,
+          responseQuality: 0,
+          responseTime: responseTime,
+          tokensUsed: 0,
+          errorOccurred: true,
+          retryCount: 0
+        });
+      } catch (logError) {
+        console.warn('[Strategy] Error logging failed outcome:', logError);
+      }
+    }
+
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

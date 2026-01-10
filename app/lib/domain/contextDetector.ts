@@ -1,11 +1,13 @@
 /**
- * Context Detector
+ * Context Detector - ENHANCED VERSION
  * Analyzes user input to detect:
  * - Mode (Learning, Code Review, Expert)
  * - File type (Python, TypeScript, React, etc)
- * - Complexity level
+ * - Complexity level (with AST-level analysis)
  * - Primary domain (backend, frontend)
  */
+
+import type { ComplexitySignals } from '../strategy/types';
 
 export type DetectionMode = 'learning' | 'code-review' | 'expert' | null;
 export type DetectionModeNonNull = 'learning' | 'code-review' | 'expert';
@@ -20,6 +22,12 @@ export interface DetectionResult {
   confidence: number; // 0-1
   detectedKeywords: string[];
   reasoning: string;
+}
+
+// ENHANCED VERSION with complexity score
+export interface EnhancedDetectionResult extends DetectionResult {
+  complexityScore: number; // 0-100 (NEW)
+  complexitySignals: ComplexitySignals; // NEW - detailed signals
 }
 
 /**
@@ -81,29 +89,149 @@ const FILE_TYPE_PATTERNS: Record<FileType, RegExp[]> = {
   unknown: [],
 };
 
-/**
- * Complexity indicators
- */
-const COMPLEXITY_PATTERNS = {
-  complex: [
-    /\b(async|await|Promise|concurrent|race condition|deadlock)\b/i,
-    /\b(callback|generator|iterator|event loop|microtask)\b/i,
-    /\b(TypeScript|generic|decorator|reflection)\b/i,
-    /\b(architecture|pattern|design|scale)\b/i,
-    /```[\s\S]{200,}/i, // Large code block (200+ chars)
-  ],
-  moderate: [
-    /\b(function|class|module|import|loop|condition)\b/i,
-    /```[\s\S]{50,200}/i, // Medium code block
-    /\b(error|exception|try|catch)\b/i,
-  ],
-  simple: [
-    /\b(print|log|variable|constant)\b/i,
-    /```[\s\S]{0,50}/i, // Small code block
-  ],
-};
-
 export class ContextDetector {
+  /**
+   * ENHANCED: Analyze complexity with AST-level signals
+   * Returns detailed complexity breakdown (0-100 score)
+   */
+  static analyzeComplexity(input: string, domain?: Domain): ComplexitySignals {
+    const signals: ComplexitySignals = {
+      linesOfCode: 0,
+      codeBlockCount: 0,
+      cyclomaticComplexity: 0,
+      asyncPatternDepth: 0,
+      importCount: 0,
+      functionCount: 0,
+      classCount: 0,
+      inputLength: input.length,
+      sentenceCount: (input.match(/[.!?]+/g) || []).length,
+      technicalKeywordCount: 0,
+      questionDepth: 0,
+      conversationDepth: 1,
+      domainComplexity: 0,
+      multiDomainDetected: false,
+      overallComplexity: 0
+    };
+
+    // 1. CODE BLOCK ANALYSIS
+    const codeBlocks = input.match(/```[\s\S]*?```/g) || [];
+    signals.codeBlockCount = codeBlocks.length;
+
+    codeBlocks.forEach(block => {
+      const code = block.replace(/```[a-z]*\n?|\n?```/g, '');
+      const lines = code.split('\n').filter(line => line.trim().length > 0);
+      signals.linesOfCode += lines.length;
+    });
+
+    // 2. TECHNICAL KEYWORD ANALYSIS
+    const technicalKeywords = [
+      'async', 'await', 'Promise', 'architecture', 'refactor', 'optimize',
+      'design pattern', 'concurrency', 'race condition', 'deadlock',
+      'TypeScript', 'generic', 'decorator', 'middleware', 'authentication',
+      'authorization', 'scalability', 'performance', 'memory', 'threading'
+    ];
+
+    technicalKeywords.forEach(keyword => {
+      if (input.toLowerCase().includes(keyword.toLowerCase())) {
+        signals.technicalKeywordCount++;
+      }
+    });
+
+    // 3. AST-LIKE PATTERN ANALYSIS (regex-based)
+    signals.importCount = (input.match(/\b(import|from|require)\s+/gi) || []).length;
+    signals.functionCount = (input.match(/\b(function|def|async\s+def|=>)\b/gi) || []).length;
+    signals.classCount = (input.match(/\bclass\s+\w+/gi) || []).length;
+
+    // 4. ASYNC PATTERN DEPTH
+    const hasAsync = /\b(async|await)\b/i.test(input);
+    const hasPromise = /\bPromise\b/i.test(input);
+    const hasConcurrency = /\b(concurrent|parallel|race|Promise\.all)\b/i.test(input);
+
+    if (hasConcurrency) signals.asyncPatternDepth = 3;
+    else if (hasPromise) signals.asyncPatternDepth = 2;
+    else if (hasAsync) signals.asyncPatternDepth = 1;
+
+    // 5. CYCLOMATIC COMPLEXITY ESTIMATION
+    const complexityIndicators = [
+      { pattern: /\b(if|else if|elif)\b/gi, weight: 1 },
+      { pattern: /\b(for|while|do)\b/gi, weight: 1 },
+      { pattern: /(\&\&|\|\|)/g, weight: 1 },
+      { pattern: /\b(catch|except|try)\b/gi, weight: 1 },
+      { pattern: /\b(switch|case)\b/gi, weight: 1 },
+      { pattern: /\?.*:/g, weight: 1 } // Ternary operators
+    ];
+
+    complexityIndicators.forEach(({ pattern, weight }) => {
+      const matches = input.match(pattern) || [];
+      signals.cyclomaticComplexity += matches.length * weight;
+    });
+
+    // 6. QUESTION DEPTH (nested/multiple questions)
+    const questions = input.split(/[.!]/).filter(s => s.includes('?'));
+    signals.questionDepth = questions.length;
+
+    // 7. DOMAIN COMPLEXITY
+    const domainComplexityMap: Record<string, number> = {
+      'python-backend': 60,
+      'react-frontend': 50,
+      'nextjs-fullstack': 80,
+      'mixed': 70
+    };
+
+    if (domain) {
+      signals.domainComplexity = domainComplexityMap[domain] || 0;
+    }
+
+    // Detect multi-domain
+    const hasPython = /\b(python|async def|fastapi|django)\b/i.test(input);
+    const hasReact = /\b(react|useState|useEffect|component)\b/i.test(input);
+    const hasDB = /\b(sql|database|query|SELECT|INSERT)\b/i.test(input);
+
+    signals.multiDomainDetected = [hasPython, hasReact, hasDB].filter(Boolean).length > 1;
+
+    // 8. CALCULATE OVERALL COMPLEXITY SCORE (0-100)
+    const score = Math.min(100,
+      (signals.linesOfCode * 0.3) +
+      (signals.cyclomaticComplexity * 0.5) +
+      (signals.technicalKeywordCount * 1.2) +
+      (signals.asyncPatternDepth * 8) +
+      (signals.functionCount * 0.8) +
+      (signals.classCount * 1.5) +
+      (signals.importCount * 0.4) +
+      (signals.questionDepth * 0.5) +
+      (signals.multiDomainDetected ? 10 : 0) +
+      Math.min(signals.inputLength / 20, 20) // Cap input length impact
+    );
+
+    signals.overallComplexity = Math.round(score);
+
+    return signals;
+  }
+
+  /**
+   * ENHANCED: Detect with complexity score
+   */
+  static detectEnhanced(
+    userInput: string,
+    filePath?: string,
+    conversationDepth: number = 1
+  ): EnhancedDetectionResult {
+    // Call existing detection
+    const baseDetection = this.detect(userInput, filePath);
+
+    // Add enhanced complexity analysis
+    const signals = this.analyzeComplexity(userInput, baseDetection.domain);
+    signals.conversationDepth = conversationDepth;
+
+    return {
+      ...baseDetection,
+      complexityScore: signals.overallComplexity,
+      complexitySignals: signals,
+      complexity: signals.overallComplexity < 30 ? 'simple' :
+                 signals.overallComplexity < 70 ? 'moderate' : 'complex'
+    };
+  }
+
   /**
    * Detect all context from user input
    */
@@ -216,35 +344,17 @@ export class ContextDetector {
 
   /**
    * Detect complexity level
+   * Now uses enhanced analysis for better accuracy
    */
   private static detectComplexity(input: string): 'simple' | 'moderate' | 'complex' {
-    const codeBlockSize = (input.match(/```/g) || []).length;
-    const inputLength = input.length;
+    // Use enhanced complexity analysis
+    const signals = this.analyzeComplexity(input);
+    const score = signals.overallComplexity;
 
-    let complexScore = 0;
-
-    // Check complex patterns
-    COMPLEXITY_PATTERNS.complex.forEach(pattern => {
-      if (pattern.test(input)) complexScore += 2;
-    });
-
-    // Check moderate patterns
-    COMPLEXITY_PATTERNS.moderate.forEach(pattern => {
-      if (pattern.test(input)) complexScore += 1;
-    });
-
-    // Check simple patterns
-    COMPLEXITY_PATTERNS.simple.forEach(pattern => {
-      if (pattern.test(input)) complexScore -= 1;
-    });
-
-    // Length heuristic
-    if (inputLength > 500) complexScore++;
-    if (inputLength > 1000) complexScore += 2;
-
-    if (complexScore >= 3) return 'complex';
-    if (complexScore >= 1) return 'moderate';
-    return 'simple';
+    // Map 0-100 score to simple/moderate/complex
+    if (score < 30) return 'simple';
+    if (score < 70) return 'moderate';
+    return 'complex';
   }
 
   /**

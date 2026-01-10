@@ -1,44 +1,18 @@
-# Hacker Reign Memory System - Complete Documentation
+# Memory System
+
+A production-ready, local-first memory system for LLM applications with persistent conversation history, semantic search, and strategy analytics.
 
 ## Overview
 
-The Hacker Reign memory system is a **full-stack, production-ready solution** for adding long-term memory to your local LLM. It combines three powerful approaches:
+The Hacker Reign memory system combines three powerful technologies to provide long-term memory for your local LLM:
 
-1. **SQLite Storage**: Persistent conversation history and user preferences
-2. **RAG (Retrieval-Augmented Generation)**: Semantic search over past conversations
-3. **Extended Context**: Access to the last N messages in any conversation
+1. **SQLite Storage**: Persistent conversation history, user preferences, and analytics
+2. **RAG (Retrieval-Augmented Generation)**: Semantic search over past conversations using vector embeddings
+3. **Strategy Analytics**: Track model selection decisions and their outcomes for optimization
 
-## What is "Normalization"?
+All data stays local. No external services required.
 
-When you asked "what is norm," you were likely asking about **vector normalization**. Here's what it means:
-
-### Vector Normalization Explained
-
-An embedding is a vector of numbers (e.g., [0.245, -0.891, 0.123, ...]). Normalization scales this vector to unit length (magnitude = 1) using L2 normalization:
-
-```
-Normalized = Vector / ||Vector||
-where ||Vector|| = sqrt(sum(x_i^2))
-```
-
-**Why it matters:**
-- **Consistent similarity scores**: When vectors are normalized, cosine similarity ranges from -1 to 1
-- **Fair comparisons**: A word twice as long doesn't automatically seem twice as similar
-- **Numerical stability**: Prevents overflow/underflow in calculations
-
-**Example:**
-```
-Vector: [3, 4]
-Magnitude: sqrt(3² + 4²) = sqrt(25) = 5
-Normalized: [3/5, 4/5] = [0.6, 0.8]
-Length check: sqrt(0.6² + 0.8²) = 1 ✓
-```
-
-The memory system **automatically normalizes** all Ollama embeddings, so you don't need to worry about it.
-
----
-
-## Architecture Overview
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -46,21 +20,22 @@ The memory system **automatically normalizes** all Ollama embeddings, so you don
 └────────────────────┬────────────────────────────┘
                      │
      ┌───────────────▼───────────────┐
-     │  Memory Manager (Orchestrator)│
+     │  MemoryManager (Orchestrator) │
+     │  - Coordinates subsystems     │
      │  - Routes requests            │
-     │  - Coordinates all subsystems │
      └───────────────┬───────────────┘
                      │
      ┌───────────────┼───────────────┐
      │               │               │
      ▼               ▼               ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│   Storage    │ │     RAG      │ │  Preferences │
-│  (SQLite)    │ │  (Chroma +   │ │   (JSON)     │
-│              │ │  Ollama)     │ │              │
-│ • Messages   │ │              │ │ • System     │
-│ • Chats      │ │ • Embeddings │ │ • User       │
-│ • Metadata   │ │ • Similarity │ │ • Settings   │
+│   Storage    │ │     RAG      │ │  Analytics   │
+│  (SQLite)    │ │  (Chroma +   │ │ (Strategy    │
+│              │ │  Ollama)     │ │  Tracking)   │
+│ • Messages   │ │              │ │              │
+│ • Chats      │ │ • Embeddings │ │ • Decisions  │
+│ • Metadata   │ │ • Similarity │ │ • Outcomes   │
+│ • Prefs      │ │ • Search     │ │ • Analytics  │
 └──────────────┘ └──────────────┘ └──────────────┘
      │               │               │
      └───────────────┼───────────────┘
@@ -79,123 +54,254 @@ The memory system **automatically normalizes** all Ollama embeddings, so you don
      └───────────────────────────────┘
 ```
 
----
-
 ## Directory Structure
 
 ```
 app/lib/memory/
-├── index.ts                          # Main MemoryManager (public API)
-├── schemas.ts                        # TypeScript types & interfaces
+├── index.ts                      # MemoryManager (main public API)
+├── schemas.ts                    # TypeScript types & interfaces
 │
 ├── storage/
-│   ├── index.ts                      # Storage abstraction & singleton
-│   └── sqlite.ts                     # SQLite implementation (production-grade)
+│   ├── index.ts                  # Storage abstraction & singleton
+│   └── sqlite.ts                 # SQLite implementation
 │
 ├── rag/
-│   ├── index.ts                      # RAGManager (orchestrator)
-│   ├── embeddings.ts                 # OllamaEmbeddings (text → vectors)
-│   └── retrieval.ts                  # ChromaRetrieval (vector search)
+│   ├── index.ts                  # RAGManager (orchestrator)
+│   ├── embeddings.ts             # OllamaEmbeddings (text → vectors)
+│   └── retrieval.ts              # ChromaRetrieval (vector search)
 │
 ├── migrations/
-│   └── init.sql                      # Database schema (SQLite + PostgreSQL compatible)
+│   ├── init.sql                  # Base schema (conversations, messages, etc.)
+│   └── 002_strategy_analytics.sql # Strategy tracking tables
 │
-├── INTEGRATION_GUIDE.md              # How to integrate into your app
-└── .env.example                      # Environment variables template
+├── README.md                     # This file
+├── FILE_MANIFEST.md              # File listing and quick reference
+└── INTEGRATION_GUIDE.md          # Integration instructions
 ```
 
----
+## Core Features
+
+### 1. Conversation Management
+
+Store and retrieve complete conversation history:
+
+```typescript
+import { getMemoryManager } from '@/lib/memory';
+
+const memory = getMemoryManager();
+
+// Create a new conversation
+const conversation = memory.createConversation(
+  'Python Async Patterns',
+  'qwen2.5-coder',
+  ['python', 'async', 'learning']
+);
+
+// Save messages
+await memory.saveMessage(
+  conversation.id,
+  'user',
+  'How does async/await work?'
+);
+
+await memory.saveMessage(
+  conversation.id,
+  'assistant',
+  'async/await is syntactic sugar for Promises...',
+  { model_used: 'qwen2.5-coder', tokens_used: 150 }
+);
+
+// Retrieve messages
+const messages = memory.getConversationMessages(conversation.id);
+const recent = memory.getLastMessages(conversation.id, 10);
+```
+
+### 2. Semantic Search (RAG)
+
+Find similar conversations using vector embeddings:
+
+```typescript
+// Find past discussions about a topic
+const results = await memory.retrieveSimilarMessages(
+  'coroutines and event loops',
+  topK = 5
+);
+
+results.forEach((result, i) => {
+  console.log(`${i+1}. Similarity: ${(result.similarity_score * 100).toFixed(0)}%`);
+  console.log(`   ${result.message.content.substring(0, 100)}...`);
+});
+
+// Augment prompt with retrieved context
+const augmented = await memory.augmentWithMemory(
+  "I'm confused about asyncio"
+);
+
+// Use the enhanced prompt in your LLM call
+const response = await ollama.chat({
+  messages: [
+    { role: 'system', content: augmented.enhanced_system_prompt },
+    ...currentMessages
+  ]
+});
+```
+
+### 3. Strategy Analytics
+
+Track model selection decisions and outcomes:
+
+```typescript
+// Save a strategy decision
+await memory.saveStrategyDecision({
+  conversation_id: 'conv_123',
+  strategy_name: 'complexity-aware',
+  selected_model: 'qwen2.5-coder:32b',
+  reasoning: 'High complexity detected',
+  confidence: 0.87,
+  complexity_score: 72
+});
+
+// Track the outcome
+await memory.saveStrategyOutcome({
+  decision_id: 'decision_456',
+  response_quality: 0.9,
+  user_feedback: 'positive',
+  response_time_ms: 1250,
+  tokens_used: 420
+});
+
+// Analyze strategy performance
+const analytics = await memory.getStrategyAnalytics();
+console.log('Best performing strategy:', analytics.best_strategy);
+console.log('Average response quality:', analytics.avg_quality);
+```
+
+### 4. User Preferences
+
+Store and retrieve user settings:
+
+```typescript
+// Set preferences
+memory.setPreference('preferred_model', 'qwen2.5-coder');
+memory.setPreference('theme', { color: 'dark', fontSize: 14 });
+
+// Get preferences
+const model = memory.getPreference('preferred_model');
+const allPrefs = memory.getAllPreferences();
+
+// System preferences
+memory.setSystemPreferences({
+  preferred_model: 'qwen2.5-coder',
+  rag_top_k: 5,
+  max_context_tokens: 16000
+});
+```
 
 ## Installation & Setup
 
 ### 1. Install Dependencies
 
 ```bash
-npm install
+npm install better-sqlite3 chromadb
+npm install --save-dev @types/better-sqlite3
 ```
 
-This will install:
-- `better-sqlite3`: SQLite wrapper for Node.js
-- `chromadb`: Vector database (with built-in SQLite storage)
-- `@types/better-sqlite3`: TypeScript types
+### 2. Configure Environment Variables
 
-### 2. Create Environment File
-
-```bash
-cp .env.memory.example .env.local
-```
-
-Then update `.env.local` with your paths:
+Create or update `.env.local`:
 
 ```env
+# Memory system paths
 MEMORY_DB_PATH=./.data/hackerreign.db
 CHROMA_DB_PATH=./.data/chroma
+
+# Ollama embedding model
 OLLAMA_EMBED_HOST=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
+
+# RAG settings
 RAG_TOP_K=5
+RAG_SIMILARITY_THRESHOLD=0.3
 ```
 
-### 3. Ensure Ollama is Running with Embedding Model
+### 3. Pull Embedding Model
 
 ```bash
-# Terminal 1: Start Ollama
+# Start Ollama
 ollama serve
 
-# Terminal 2: Pull embedding model (one-time)
+# Pull embedding model (one-time)
 ollama pull nomic-embed-text
 ```
 
-### 4. Initialize Memory in Your App
+### 4. Initialize Memory System
 
-See `INTEGRATION_GUIDE.md` for full integration steps.
+```typescript
+import { initializeMemory } from '@/lib/memory';
 
----
+// Call once at app startup
+await initializeMemory();
+```
 
-## How It Works - Step by Step
+## How It Works
 
-### Example Conversation Flow
+### Vector Normalization
+
+Embeddings are vectors of numbers (e.g., `[0.245, -0.891, 0.123, ...]`). The system automatically normalizes them to unit length for consistent similarity scoring:
+
+```
+Normalized = Vector / ||Vector||
+where ||Vector|| = sqrt(sum(x_i^2))
+```
+
+**Benefits:**
+- Consistent similarity scores (cosine similarity ranges from -1 to 1)
+- Fair comparisons regardless of input length
+- Numerical stability
+
+### Conversation Flow Example
 
 ```
 User: "How do I use async/await in Python?"
   │
   ├─► Memory augments the query
-  │   "Find messages similar to this question"
-  │   (Searches all past conversations)
+  │   Searches all past conversations
   │   Finds: "Previous conversation about coroutines" (82% similar)
   │
   ├─► Enhanced system prompt is created
   │   "You are Hacker Reign. Here's a relevant memory: [past response]"
   │
   ├─► Ollama generates response
-  │   (Uses extended context window + RAG context)
+  │   Uses extended context window + RAG context
   │
   └─► Response is saved and embedded
-      (For future retrieval)
+      For future retrieval
 ```
 
-### Component Breakdown
+### Component Details
 
-#### **1. Storage (SQLite)**
+#### SQLite Storage ([storage/sqlite.ts](storage/sqlite.ts))
 
-Stores:
+**Stores:**
 - Conversation metadata (title, model, date, tags)
-- Individual messages (content, role, tokens used)
+- Individual messages (content, role, tokens)
 - User preferences (settings, system config)
 - Embedding tracking (which messages are in Chroma)
+- Strategy decisions and outcomes
 
 **Why SQLite?**
-- No external services needed (fully local)
+- No external services (fully local)
 - ACID compliance (data integrity)
-- Easy to extend with PostgreSQL (schema-compatible)
+- Easy to extend with PostgreSQL
 - Familiar SQL for queries
 
-#### **2. RAG (Chroma + Ollama Embeddings)**
+#### RAG System ([rag/](rag/))
 
-How it works:
+**How it works:**
 
 ```
-Step 1: Text → Embedding (1536 numbers)
-  "How do I use async/await?" 
+Step 1: Text → Embedding (768 dimensions with nomic-embed-text)
+  "How do I use async/await?"
   → [0.245, -0.891, 0.123, ..., 0.456]
 
 Step 2: Store in Chroma
@@ -206,34 +312,64 @@ Step 2: Store in Chroma
 Step 3: Similarity Search
   Query: "Tell me about coroutines"
   → Embedding: [0.234, -0.879, ...]
-  
-  Similarity Score = Dot product of normalized vectors
+
+  Similarity Score = Cosine similarity of normalized vectors
                    = 0.87 (very similar!)
-  
+
   Result: "async/await message" (87% match)
 ```
 
 **Why Chroma?**
-- Hybrid storage (embeddings + metadata in one place)
+- Hybrid storage (embeddings + metadata)
 - Built-in SQLite persistence
-- Easy to migrate to PostgreSQL with pgvector
-- Simple HTTP API for scaling
+- Easy PostgreSQL migration with pgvector
+- Simple API for scaling
 
-#### **3. User Preferences**
+## Database Schema
 
-Stores:
-- Preferred model
-- Theme/UI settings
-- System configuration
-- RAG tuning parameters
+### Core Tables
 
-Retrieved with `memory.getAllPreferences()` and injected into prompts.
+**conversations**: Chat sessions
+```sql
+id, title, created_at, updated_at, model_used, total_tokens, summary, tags
+```
 
----
+**messages**: Individual messages
+```sql
+id, conversation_id, role, content, created_at, tokens_used,
+tool_calls, tool_results, model_used, temperature
+```
 
-## Performance Characteristics
+**user_preferences**: Key-value settings
+```sql
+key, value, created_at, updated_at, data_type
+```
 
-### Latency (on M4 MacBook Air 16GB)
+**embedding_metadata**: Track embedded messages
+```sql
+id, message_id, conversation_id, chroma_id,
+created_at, embedding_status, error_message
+```
+
+### Analytics Tables (New)
+
+**strategy_decisions**: Model selection tracking
+```sql
+id, conversation_id, message_id, strategy_name, selected_model,
+reasoning, confidence, context_complexity, complexity_score,
+decision_time_ms, created_at
+```
+
+**strategy_outcomes**: Performance tracking
+```sql
+id, decision_id, response_quality, user_feedback,
+response_time_ms, tokens_used, error_occurred,
+retry_count, created_at
+```
+
+## Performance
+
+### Latency (M4 MacBook Air 16GB)
 
 | Operation | Time | Notes |
 |-----------|------|-------|
@@ -248,114 +384,10 @@ Retrieved with `memory.getAllPreferences()` and injected into prompts.
 | Data | Size per 1000 messages |
 |------|----------------------|
 | SQLite DB | ~5-10 MB |
-| Chroma vectors | ~500 MB (384-dim) |
+| Chroma vectors | ~500 MB (768-dim) |
 | Total | ~510 MB |
 
-### Scaling
-
-With your 16GB RAM and 13GB model + 1GB overhead:
-
-```
-Available: 2GB for everything else
-Used by memory: ~100-200MB (easily fits)
-```
-
-You can safely store **5,000+ conversations** with **100,000+ messages** locally.
-
----
-
-## Code Examples
-
-### Example 1: Save a Conversation with Memory
-
-```typescript
-import { getMemoryManager } from '@/lib/memory';
-
-// Create conversation
-const memory = getMemoryManager();
-const conversation = memory.createConversation(
-  'Python Async Patterns',
-  'qwen2.5-coder',
-  ['python', 'async', 'learning']
-);
-
-// Save user message
-await memory.saveMessage(
-  conversation.id,
-  'user',
-  'How does async/await work?'
-);
-
-// Save assistant response
-await memory.saveMessage(
-  conversation.id,
-  'assistant',
-  'async/await is syntactic sugar for Promises...'
-);
-
-// Update summary
-memory.updateConversation(conversation.id, {
-  summary: 'Discussion about Python async patterns'
-});
-```
-
-### Example 2: Use RAG to Find Similar Conversations
-
-```typescript
-// Find past discussions about async patterns
-const results = await memory.retrieveSimilarMessages(
-  'coroutines and event loops',
-  topK = 5  // Get top 5 most similar
-);
-
-results.forEach((result, i) => {
-  console.log(`${i+1}. Similarity: ${(result.similarity_score * 100).toFixed(0)}%`);
-  console.log(`   ${result.message.content.substring(0, 100)}...`);
-});
-```
-
-### Example 3: Augment Prompt with Memory
-
-```typescript
-// Most common use case:
-const userQuery = "I'm confused about asyncio";
-
-const augmented = await memory.augmentWithMemory(userQuery);
-
-// augmented contains:
-// - original_query: "I'm confused about asyncio"
-// - retrieved_context: [ {message, similarity_score}, ... ]
-// - enhanced_system_prompt: "You are... [context injected]"
-
-// Use enhanced_system_prompt in your LLM call:
-const response = await openai.chat.completions.create({
-  model: 'gpt-4',
-  messages: [
-    { role: 'system', content: augmented.enhanced_system_prompt },
-    ...currentMessages
-  ]
-});
-```
-
-### Example 4: Get System Statistics
-
-```typescript
-const stats = await memory.getStats();
-
-console.log('Database stats:', {
-  conversations: stats.storage.total_conversations,
-  messages: stats.storage.total_messages,
-  total_tokens: stats.storage.total_tokens
-});
-
-console.log('RAG stats:', {
-  embedded_messages: stats.rag.chroma_stats.count,
-  embedding_dimension: stats.rag.embedding_dimension,
-  model_available: stats.rag.embedding_model_available
-});
-```
-
----
+**Capacity**: Safely store **5,000+ conversations** with **100,000+ messages** locally.
 
 ## Configuration & Tuning
 
@@ -384,8 +416,6 @@ RAG_SIMILARITY_THRESHOLD=0.3  # Range: 0.0-1.0
 | 0.5 | Strict (only very similar) |
 | 0.7+ | Extremely strict (exact matches only) |
 
-**Recommendation:** Start with 0.3, increase if getting irrelevant results.
-
 ### Embedding Model Selection
 
 ```env
@@ -398,32 +428,109 @@ OLLAMA_EMBED_MODEL=nomic-embed-text  # 768-dimensional
 | `nomic-embed-text` | 768 | Medium | Excellent | Default (RECOMMENDED) |
 | `bge-large:en-v1.5` | 1024 | Slow | Best | Maximum accuracy |
 
----
+## API Reference
 
-## PostgreSQL Migration Path
+```typescript
+import { getMemoryManager } from '@/lib/memory';
+const memory = getMemoryManager();
 
-When you're ready to scale to PostgreSQL:
+// === Initialization ===
+await memory.initialize();
 
-### 1. Database Schema (Auto-compatible)
+// === Conversations ===
+memory.createConversation(title, model?, tags?)
+memory.getConversation(id)
+memory.getAllConversations(limit?, offset?)
+memory.updateConversation(id, updates)
+memory.deleteConversation(id)
 
-The SQLite schema in `migrations/init.sql` is designed for PostgreSQL. Just run it on PostgreSQL.
+// === Messages ===
+await memory.saveMessage(convId, role, content, metadata?)
+memory.getMessage(id)
+memory.getConversationMessages(convId)
+memory.getLastMessages(convId, count)
 
-### 2. Install pgvector Extension
+// === User Preferences ===
+memory.setPreference(key, value)
+memory.getPreference(key)
+memory.getAllPreferences()
+
+// === RAG ===
+await memory.augmentWithMemory(query)
+await memory.retrieveSimilarMessages(query, topK?)
+
+// === System ===
+await memory.getStats()
+memory.formatContextForLogging(augmented)
+```
+
+## Integration Example
+
+See [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) for complete integration steps.
+
+Basic integration in [app/api/llm/route.ts](../../api/llm/route.ts):
+
+```typescript
+import { getMemoryManager } from '@/lib/memory';
+
+export async function POST(req: NextRequest) {
+  const { messages, conversationId } = await req.json();
+  const memory = getMemoryManager();
+
+  // Create or get conversation
+  let currentConvId = conversationId ||
+    memory.createConversation('New Chat').id;
+
+  // Augment with memory
+  const lastUserMsg = messages[messages.length - 1];
+  const augmented = await memory.augmentWithMemory(lastUserMsg.content);
+
+  // Save user message
+  await memory.saveMessage(currentConvId, 'user', lastUserMsg.content);
+
+  // Call LLM with enhanced prompt
+  const response = await ollama.chat({
+    messages: [
+      { role: 'system', content: augmented.enhanced_system_prompt },
+      ...messages
+    ]
+  });
+
+  // Save assistant response
+  await memory.saveMessage(
+    currentConvId,
+    'assistant',
+    response.message.content,
+    { model_used: 'qwen2.5-coder', tokens_used: 420 }
+  );
+
+  return NextResponse.json(response);
+}
+```
+
+## PostgreSQL Migration
+
+The schema is designed for easy PostgreSQL migration:
+
+### 1. Install pgvector Extension
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### 3. Add Embedding Column
+### 2. Add Embedding Column
 
 ```sql
-ALTER TABLE embedding_metadata ADD COLUMN embedding vector(384);
-CREATE INDEX ON embedding_metadata USING ivfflat (embedding vector_cosine_ops);
+ALTER TABLE embedding_metadata
+ADD COLUMN embedding vector(768);
+
+CREATE INDEX ON embedding_metadata
+USING ivfflat (embedding vector_cosine_ops);
 ```
 
-### 4. Swap Storage Implementation
+### 3. Swap Storage Implementation
 
-Create `app/lib/memory/storage/postgres.ts`:
+Create `storage/postgres.ts`:
 
 ```typescript
 export class PostgresStorage {
@@ -432,10 +539,9 @@ export class PostgresStorage {
 }
 ```
 
-Then in `app/lib/memory/storage/index.ts`:
+Update `storage/index.ts`:
 
 ```typescript
-// Swap implementations based on env
 const usePostgres = process.env.DATABASE_URL?.includes('postgres');
 const storage = usePostgres
   ? new PostgresStorage(process.env.DATABASE_URL!)
@@ -444,16 +550,14 @@ const storage = usePostgres
 
 **The beauty:** Code above storage layer needs zero changes!
 
----
-
 ## Security & Privacy
 
 ### Data Sensitivity
 
 The memory system stores:
-- **User queries**: Your exact questions to the LLM
-- **LLM responses**: Full conversation history
-- **Metadata**: Topics, models used, timestamps
+- User queries (exact questions to the LLM)
+- LLM responses (full conversation history)
+- Metadata (topics, models used, timestamps)
 
 **All data stays local.** Nothing is sent to external services except Ollama (which runs locally).
 
@@ -464,7 +568,7 @@ The memory system stores:
 const dbPath = '/secure/location/hackerreign.db';
 
 // ❌ DON'T: Commit database to Git
-// .gitignore: 
+// .gitignore:
 //   .data/
 //   *.db
 
@@ -481,20 +585,13 @@ chmod 600 .data/hackerreign.db
 // Delete a single conversation
 await memory.deleteConversation(conversationId);
 
-// Clear all memory (development/testing)
-await memory.clear();
-
 // Export before deletion
 const json = memory.exportConversation(conversationId);
 ```
 
----
-
 ## Troubleshooting
 
 ### "SQLITE_CANTOPEN: unable to open database file"
-
-**Cause:** Directory doesn't exist
 
 **Fix:**
 ```bash
@@ -503,8 +600,6 @@ npm install
 ```
 
 ### "Cannot find module 'better-sqlite3'"
-
-**Cause:** Native module not compiled
 
 **Fix:**
 ```bash
@@ -515,8 +610,6 @@ npm run build
 
 ### "Model not found: nomic-embed-text"
 
-**Cause:** Embedding model not pulled
-
 **Fix:**
 ```bash
 ollama pull nomic-embed-text
@@ -524,8 +617,6 @@ ollama list  # Verify
 ```
 
 ### "Connection refused" (Ollama)
-
-**Cause:** Ollama not running
 
 **Fix:**
 ```bash
@@ -542,68 +633,11 @@ This is normal! It means:
 
 **Solution:** Increase threshold or create more conversations.
 
----
-
-## API Quick Reference
-
-```typescript
-import { getMemoryManager } from '@/lib/memory';
-const memory = getMemoryManager();
-
-// Initialization
-await memory.initialize();
-
-// Conversations
-memory.createConversation(title, model?, tags?)
-memory.getConversation(id)
-memory.getAllConversations(limit?, offset?)
-memory.updateConversation(id, updates)
-memory.deleteConversation(id)
-
-// Messages
-await memory.saveMessage(convId, role, content, metadata?)
-memory.getMessage(id)
-memory.getConversationMessages(convId)
-memory.getLastMessages(convId, count)
-
-// User Preferences
-memory.setPreference(key, value)
-memory.getPreference(key)
-memory.getAllPreferences()
-
-// RAG
-await memory.augmentWithMemory(query)
-await memory.retrieveSimilarMessages(query, topK?)
-await memory.hasRelevantMemories(convId, query)
-
-// System
-await memory.getHealthStatus()
-await memory.getStats()
-memory.exportConversation(convId)
-await memory.shutdown()
-```
-
----
-
-## Next Steps
-
-1. ✅ **Install**: `npm install`
-2. ✅ **Configure**: Copy `.env.memory.example` to `.env.local`
-3. ✅ **Pull model**: `ollama pull nomic-embed-text`
-4. ✅ **Integrate**: Follow `INTEGRATION_GUIDE.md`
-5. ✅ **Test**: Make a chat request and verify memory is saving
-6. ✅ **Monitor**: Check `memory.getStats()` to see data accumulating
-
----
-
-## Support & Debugging
+## Debugging
 
 Enable debug logging:
 
 ```typescript
-import { getMemoryManager } from '@/lib/memory';
-
-// This will log detailed information
 process.env.DEBUG_RAG = 'true';
 process.env.DEBUG_SQL = 'true';
 
@@ -618,14 +652,17 @@ Check logs for:
 - `[RAGManager]` - RAG operations
 - `[MemoryManager]` - High-level operations
 
----
+## Related Files
+
+- **Integration Guide**: [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
+- **File Manifest**: [FILE_MANIFEST.md](FILE_MANIFEST.md)
+- **API Usage**: [app/api/llm/route.ts](../../api/llm/route.ts)
+- **Domain Context**: [../domain/README.md](../domain/README.md)
 
 ## License
 
-©2026 | Vivid Visions | HackerReign™
-
----
+Part of the Hacker Reign project.
 
 **Last Updated**: January 2026
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Production Ready ✅

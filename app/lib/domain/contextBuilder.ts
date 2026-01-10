@@ -8,10 +8,12 @@
  * 5. Returns complete system prompt
  */
 
-import { ContextDetector, DetectionResult, DetectionMode } from './contextDetector';
+import { ContextDetector, DetectionResult, DetectionMode, Domain } from './contextDetector';
 import { getModeDefinition, InteractionMode } from './modeDefinitions';
 import { formatDomainKnowledge } from './domainKnowledge';
-import type { Domain } from './contextDetector';
+
+// Re-export types for convenience
+export type { Domain };
 
 export interface ContextBuilderOptions {
   userInput: string;

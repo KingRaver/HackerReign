@@ -10,6 +10,8 @@ interface Message {
   content: string;
 }
 
+type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost';
+
 export default function Chat() {
   const [model, setModel] = useState('qwen2.5-coder:7b-instruct-q5_K_M');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,6 +20,9 @@ export default function Chat() {
   const [enableTools, setEnableTools] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [manualMode, setManualMode] = useState<'' | 'learning' | 'code-review' | 'expert'>('');
+  const [strategyEnabled, setStrategyEnabled] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('balanced');
+  const [autoSelectedModel, setAutoSelectedModel] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -102,7 +107,9 @@ export default function Chat() {
           messages: [...messages, userMsg],
           stream: !enableTools,
           enableTools,
-          manualModeOverride: manualMode || undefined
+          manualModeOverride: manualMode || undefined,
+          strategyEnabled,
+          selectedStrategy: strategyEnabled ? selectedStrategy : undefined
         })
       });
 
@@ -117,6 +124,11 @@ export default function Chat() {
         const aiMsg: Message = { id: aiId, role: 'assistant', content };
 
         setMessages(prev => [...prev, aiMsg]);
+
+        // Update auto-selected model if strategy is enabled
+        if (strategyEnabled && data.autoSelectedModel) {
+          setAutoSelectedModel(data.autoSelectedModel);
+        }
 
         // Speak response if voice enabled
         if (voiceEnabled && content) {
@@ -224,11 +236,42 @@ export default function Chat() {
             <option value="expert" className="bg-slate-900 text-white font-medium">🧠 Expert Mode</option>
           </select>
 
+          {/* Strategy Toggle & Selector */}
+          <div className="flex gap-3 items-center">
+            {/* Strategy Toggle */}
+            <label className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white/8 border-2 border-cyan-light/30 hover:border-cyan-light/50 transition-all duration-200 cursor-pointer backdrop-blur-sm">
+              <input
+                type="checkbox"
+                checked={strategyEnabled}
+                onChange={(e) => setStrategyEnabled(e.target.checked)}
+                className="w-4 h-4 rounded accent-cyan-400"
+              />
+              <span className="text-sm font-semibold text-white">Strategy</span>
+            </label>
+
+            {/* Strategy Selector (visible when enabled) */}
+            {strategyEnabled && (
+              <select
+                value={selectedStrategy}
+                onChange={(e) => setSelectedStrategy(e.target.value as StrategyType)}
+                className="px-5 py-3 rounded-2xl text-sm font-semibold bg-white/10 text-white border-2 border-cyan-400/30 hover:border-cyan-400/50 backdrop-blur-sm transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer"
+              >
+                <option value="balanced" className="bg-slate-900 text-white font-medium">⚖️ Balanced</option>
+                <option value="speed" className="bg-slate-900 text-white font-medium">🚀 Speed</option>
+                <option value="quality" className="bg-slate-900 text-white font-medium">🧠 Quality</option>
+                <option value="cost" className="bg-slate-900 text-white font-medium">💰 Cost</option>
+              </select>
+            )}
+          </div>
+
           {/* Model Dropdown */}
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="px-5 py-3 rounded-2xl text-sm font-semibold bg-white/8 text-white border-2 border-cyan-light/30 hover:border-cyan-light/50 hover:bg-white/12 transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer backdrop-blur-sm"
+            disabled={strategyEnabled}
+            className={`px-5 py-3 rounded-2xl text-sm font-semibold bg-white/8 text-white border-2 border-cyan-light/30 hover:border-cyan-light/50 hover:bg-white/12 transition-all duration-200 shadow-lg hover:shadow-cyan-light/20 focus:outline-none focus:ring-2 focus:ring-cyan-light/60 cursor-pointer backdrop-blur-sm ${
+              strategyEnabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             {models.map((m) => (
               <option key={m.id} value={m.id} className="bg-slate-900 text-white font-medium">
@@ -236,6 +279,13 @@ export default function Chat() {
               </option>
             ))}
           </select>
+
+          {/* Auto-selected Model Display */}
+          {strategyEnabled && autoSelectedModel && (
+            <div className="text-xs text-cyan-300/90 font-mono bg-black/30 px-3 py-2 rounded-xl border border-cyan-400/30 backdrop-blur-sm">
+              🤖 Using: <span className="font-bold text-cyan-200">{autoSelectedModel}</span>
+            </div>
+          )}
 
           {/* Tools Toggle */}
           <button

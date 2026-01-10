@@ -1,0 +1,69 @@
+// app/lib/strategy/implementations/complexityStrategy.ts
+import { BaseStrategy } from '../baseStrategy';
+import { StrategyDecision, StrategyContext } from '../types';
+
+/**
+ * Complexity-Based Strategy (MVP)
+ * Simple → Llama 3B, Moderate → Qwen 7B, Complex → DeepSeek 16B
+ */
+
+export class ComplexityStrategy extends BaseStrategy {
+  name = 'Complexity-Based';
+  priority = 100;
+  type = 'balanced';
+
+  async decide(context: StrategyContext): Promise<StrategyDecision> {
+    const complexityScore = this.calculateComplexityScore(context);
+    const isConstrained = this.isResourceConstrained(context);
+
+    let selectedModel: string;
+    let temperature: number;
+    let maxTokens: number;
+    let reasoning: string;
+
+    // Decision logic
+    if (complexityScore < 30 && !isConstrained) {
+      // SIMPLE: Fast model
+      selectedModel = this.selectModelBySize('3B', context.availableModels.map(m => m.name));
+      temperature = 0.3;
+      maxTokens = 4000;
+      reasoning = `Simple task (score: ${complexityScore}). Using fast model for speed.`;
+    } else if (complexityScore < 70) {
+      // MODERATE: Balanced model
+      selectedModel = this.selectModelBySize('7B', context.availableModels.map(m => m.name));
+      temperature = 0.4;
+      maxTokens = 8000;
+      reasoning = `Moderate complexity (score: ${complexityScore}). Using balanced coder model.`;
+    } else {
+      // COMPLEX: Expert model
+      selectedModel = this.selectModelBySize('16B', context.availableModels.map(m => m.name));
+      temperature = 0.5;
+      maxTokens = 16000;
+      reasoning = `High complexity (score: ${complexityScore}). Using expert model for deep analysis.`;
+    }
+
+    // Resource adjustments
+    if (isConstrained) {
+      selectedModel = this.selectModelBySize('3B', context.availableModels.map(m => m.name));
+      maxTokens = Math.min(maxTokens, 4000);
+      reasoning += ' Resource constrained - downgraded to fast model.';
+    }
+
+    const decision: StrategyDecision = {
+      id: this.generateId(),
+      strategyName: this.name,
+      timestamp: new Date(),
+      selectedModel,
+      temperature,
+      maxTokens,
+      streaming: true,
+      enableTools: context.userMessage.includes('tool') || context.detectedMode === 'expert',
+      maxToolLoops: 3,
+      reasoning,
+      confidence: Math.min(0.95, 0.5 + (complexityScore / 200)),
+      complexityScore
+    };
+
+    return decision;
+  }
+}

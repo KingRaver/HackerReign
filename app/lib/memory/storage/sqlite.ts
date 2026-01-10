@@ -35,30 +35,45 @@ export class SQLiteStorage {
   }
 
   /**
-   * Initialize database schema
+   * Initialize database schema and run migrations
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    const schemaPath = path.join(process.cwd(), 'app/lib/memory/migrations/init.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    const migrationsDir = path.join(process.cwd(), 'app/lib/memory/migrations');
 
-    // Split schema into individual statements and execute
-    const statements = schema
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    // Get all migration files in order
+    const migrationFiles = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql'))
+      .sort(); // Ensures init.sql runs before 002_strategy_analytics.sql
 
-    statements.forEach(statement => {
-      try {
-        this.db.exec(statement);
-      } catch (error) {
-        // Ignore "already exists" errors
-        if (!(error instanceof Error) || !error.message.includes('already exists')) {
-          throw error;
+    console.log(`[SQLite] Running ${migrationFiles.length} migrations...`);
+
+    // Run each migration file
+    for (const migrationFile of migrationFiles) {
+      const migrationPath = path.join(migrationsDir, migrationFile);
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+
+      // Split migration into individual statements and execute
+      const statements = migrationSQL
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      statements.forEach(statement => {
+        try {
+          this.db.exec(statement);
+        } catch (error) {
+          // Ignore "already exists" errors
+          if (!(error instanceof Error) || !error.message.includes('already exists')) {
+            console.error(`[SQLite] Error in ${migrationFile}:`, error);
+            throw error;
+          }
         }
-      }
-    });
+      });
+
+      console.log(`[SQLite] ✓ Applied migration: ${migrationFile}`);
+    }
 
     this.initialized = true;
     console.log('[SQLite] Database initialized successfully');
@@ -597,6 +612,176 @@ export class SQLiteStorage {
       oldest_message: oldestMsg,
       newest_message: newestMsg,
     };
+  }
+
+  /**
+   * STRATEGY ANALYTICS: Save a strategy decision
+   */
+  saveStrategyDecision(decision: {
+    id?: string;
+    conversation_id: string;
+    message_id?: string;
+    strategy_name: string;
+    selected_model: string;
+    reasoning: string;
+    confidence: number;
+    context_complexity: string;
+    complexity_score: number;
+    decision_time_ms: number;
+  }): string {
+    const id = decision.id || this.generateId('strat');
+    const now = new Date().toISOString();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO strategy_decisions
+      (id, conversation_id, message_id, strategy_name, selected_model, reasoning,
+       confidence, context_complexity, complexity_score, decision_time_ms, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      decision.conversation_id,
+      decision.message_id || null,
+      decision.strategy_name,
+      decision.selected_model,
+      decision.reasoning,
+      decision.confidence,
+      decision.context_complexity,
+      decision.complexity_score,
+      decision.decision_time_ms,
+      now
+    );
+
+    return id;
+  }
+
+  /**
+   * STRATEGY ANALYTICS: Save a strategy outcome
+   */
+  saveStrategyOutcome(outcome: {
+    id?: string;
+    decision_id: string;
+    response_quality?: number;
+    user_feedback?: 'positive' | 'negative' | 'neutral';
+    response_time_ms: number;
+    tokens_used: number;
+    error_occurred: boolean;
+    retry_count?: number;
+  }): string {
+    const id = outcome.id || this.generateId('outcome');
+    const now = new Date().toISOString();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO strategy_outcomes
+      (id, decision_id, response_quality, user_feedback, response_time_ms,
+       tokens_used, error_occurred, retry_count, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      outcome.decision_id,
+      outcome.response_quality || 0.8,
+      outcome.user_feedback || null,
+      outcome.response_time_ms,
+      outcome.tokens_used,
+      outcome.error_occurred ? 1 : 0,
+      outcome.retry_count || 0,
+      now
+    );
+
+    return id;
+  }
+
+  /**
+   * STRATEGY ANALYTICS: Get strategy performance metrics
+   */
+  getStrategyPerformance(strategyName: string): {
+    total_decisions: number;
+    avg_response_time: number;
+    avg_tokens_used: number;
+    success_rate: number;
+    avg_quality: number;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_decisions,
+        AVG(o.response_time_ms) as avg_response_time,
+        AVG(o.tokens_used) as avg_tokens_used,
+        (1.0 - AVG(CAST(o.error_occurred AS REAL))) as success_rate,
+        AVG(o.response_quality) as avg_quality
+      FROM strategy_decisions d
+      LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
+      WHERE d.strategy_name = ?
+    `);
+
+    const row = stmt.get(strategyName) as any;
+
+    if (!row || row.total_decisions === 0) return null;
+
+    return {
+      total_decisions: row.total_decisions,
+      avg_response_time: Math.round(row.avg_response_time || 0),
+      avg_tokens_used: Math.round(row.avg_tokens_used || 0),
+      success_rate: row.success_rate || 0,
+      avg_quality: row.avg_quality || 0
+    };
+  }
+
+  /**
+   * STRATEGY ANALYTICS: Get model performance metrics
+   */
+  getModelPerformance(modelName: string): {
+    total_usage: number;
+    avg_response_time: number;
+    avg_tokens_used: number;
+    success_rate: number;
+    avg_quality: number;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_usage,
+        AVG(o.response_time_ms) as avg_response_time,
+        AVG(o.tokens_used) as avg_tokens_used,
+        (1.0 - AVG(CAST(o.error_occurred AS REAL))) as success_rate,
+        AVG(o.response_quality) as avg_quality
+      FROM strategy_decisions d
+      LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
+      WHERE d.selected_model = ?
+    `);
+
+    const row = stmt.get(modelName) as any;
+
+    if (!row || row.total_usage === 0) return null;
+
+    return {
+      total_usage: row.total_usage,
+      avg_response_time: Math.round(row.avg_response_time || 0),
+      avg_tokens_used: Math.round(row.avg_tokens_used || 0),
+      success_rate: row.success_rate || 0,
+      avg_quality: row.avg_quality || 0
+    };
+  }
+
+  /**
+   * STRATEGY ANALYTICS: Get recent strategy decisions
+   */
+  getRecentStrategyDecisions(limit: number = 10): any[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        d.*,
+        o.response_time_ms,
+        o.tokens_used,
+        o.error_occurred,
+        o.response_quality
+      FROM strategy_decisions d
+      LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
+      ORDER BY d.created_at DESC
+      LIMIT ?
+    `);
+
+    return stmt.all(limit) as any[];
   }
 
   /**
