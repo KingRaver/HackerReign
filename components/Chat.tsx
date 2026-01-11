@@ -208,7 +208,10 @@ export default function Chat() {
         }
       } else {
         // Streaming response (tools disabled)
-        const aiMsg: Message = { id: aiId, role: 'assistant', content: '', decisionId: undefined };
+        let streamDecisionId: string | undefined = undefined;
+        let streamLearningContext: any = undefined;
+
+        const aiMsg: Message = { id: aiId, role: 'assistant', content: '' };
         setMessages(prev => [...prev, aiMsg]);
 
         if (response.body) {
@@ -218,7 +221,7 @@ export default function Chat() {
 
           try {
             while (true) {
-              const { done, value } = await reader.read();
+              const { done, value} = await reader.read();
               if (done) break;
 
               const chunk = decoder.decode(value, { stream: true });
@@ -231,6 +234,23 @@ export default function Chat() {
 
                   try {
                     const parsed = JSON.parse(data);
+
+                    // Check for metadata message with decision ID
+                    if (parsed.type === 'metadata' && parsed.decisionId) {
+                      streamDecisionId = parsed.decisionId;
+                      streamLearningContext = {
+                        theme: parsed.theme,
+                        complexity: parsed.complexity,
+                        temperature: parsed.temperature,
+                        maxTokens: parsed.maxTokens,
+                        toolsEnabled: enableTools,
+                        modelUsed: parsed.modelUsed || model,
+                        responseTime: 0,
+                        tokensUsed: 0
+                      };
+                      continue; // Skip rendering this metadata chunk
+                    }
+
                     const content = parsed.choices?.[0]?.delta?.content || '';
                     if (content) {
                       fullContent += content;
@@ -245,6 +265,24 @@ export default function Chat() {
                   }
                 }
               }
+            }
+
+            // After streaming completes, update message with decision ID and learning context
+            if (streamDecisionId) {
+              const responseTime = Date.now() - requestStartTime;
+              setMessages(prev => prev.map(msg =>
+                msg.id === aiId
+                  ? {
+                      ...msg,
+                      decisionId: streamDecisionId,
+                      learningContext: streamLearningContext ? {
+                        ...streamLearningContext,
+                        responseTime,
+                        tokensUsed: Math.floor(fullContent.length / 4)
+                      } : undefined
+                    }
+                  : msg
+              ));
             }
           } finally {
             reader.releaseLock();

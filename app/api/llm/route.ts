@@ -10,12 +10,12 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 const openai = new OpenAI({
   baseURL: 'http://localhost:11434/v1',
   apiKey: 'ollama',
-  timeout: 600000, // 10 minute timeout for complex queries
+  timeout: 0, // Disable timeout completely - let it cook as long as needed
   maxRetries: 0 // Don't retry, let it cook
 });
 
 export const runtime = 'nodejs'; // Required for SQLite/Chroma
-export const maxDuration = 300; // 5 minutes max for complex queries (Vercel/Next.js limit)
+export const maxDuration = 600; // 10 minutes max for complex queries (local dev - Vercel limit is 300s)
 
 export async function POST(req: NextRequest) {
   // Declare strategy variables outside try block for error handling
@@ -243,21 +243,15 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
 
       const url = 'http://localhost:11434/v1/chat/completions';
 
-      // Fetch with extended timeout for complex queries
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout
-
+      // No timeout - let complex queries take as long as they need
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive'
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        // @ts-ignore - Next.js/Node fetch options
-        keepalive: true,
-      }).finally(() => clearTimeout(timeoutId));
+        body: JSON.stringify(body)
+      });
 
       if (!response.ok) {
         const error = await response.text();
@@ -276,6 +270,22 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
             try {
               const reader = response.body?.getReader();
               if (!reader) throw new Error('No response body');
+
+              // Send decision metadata first for frontend feedback tracking
+              if (strategyEnabled && strategyDecision) {
+                const metadataChunk = {
+                  type: 'metadata',
+                  decisionId: strategyDecision.id,
+                  theme: strategyDecision.metadata?.detectedTheme,
+                  complexity: strategyDecision.complexityScore,
+                  temperature: temperature,
+                  maxTokens: maxTokens,
+                  modelUsed: model
+                };
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify(metadataChunk)}\n\n`)
+                );
+              }
 
               while (true) {
                 const { done, value } = await reader.read();
