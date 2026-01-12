@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       manualModeOverride, // Optional: user-selected mode ('learning' | 'code-review' | 'expert')
       strategyEnabled: requestStrategyEnabled = false, // NEW: Strategy system toggle
       selectedStrategy = 'balanced', // NEW: Which strategy to use
+      workflowMode = 'auto', // NEW: Workflow mode ('auto' | 'chain' | 'ensemble')
     } = await req.json();
 
     // Update outer scope variables
@@ -93,6 +94,16 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
     if (strategyEnabled) {
       try {
         console.log(`[Strategy] Executing strategy: ${selectedStrategy}`);
+
+        // If workflow strategy is selected, configure the workflow mode
+        if (selectedStrategy === 'workflow') {
+          const { WorkflowStrategy } = await import('@/app/lib/strategy/implementations/workflowStrategy');
+          const workflowStrategy = strategyManager['strategies'].get('workflow') as InstanceType<typeof WorkflowStrategy>;
+          if (workflowStrategy && 'setWorkflowMode' in workflowStrategy) {
+            workflowStrategy.setWorkflowMode(workflowMode as 'auto' | 'chain' | 'ensemble');
+            console.log(`[Workflow] Mode set to: ${workflowMode}`);
+          }
+        }
 
         strategyDecision = await strategyManager.executeStrategy(
           selectedStrategy as StrategyType,
@@ -209,6 +220,60 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
         );
       } catch (error) {
         console.warn('[Memory] Error saving user message:', error);
+      }
+    }
+
+    // ============================================================
+    // WORKFLOW ORCHESTRATOR: Check for multi-model workflows
+    // ============================================================
+    if (strategyEnabled && strategyDecision && (strategyDecision.modelChain?.enabled || strategyDecision.ensembleConfig?.enabled)) {
+      try {
+        console.log('[Workflow] Executing multi-model workflow');
+
+        const { MultiModelOrchestrator } = await import('@/app/lib/strategy/orchestrator');
+        const workflowResult = await MultiModelOrchestrator.executeWorkflow(
+          strategyDecision,
+          enhancedMessages,
+          lastUserMessage?.content || ''
+        );
+
+        // Log workflow outcome
+        if (strategyDecision.id) {
+          await strategyManager.logOutcome(strategyDecision.id, {
+            decisionId: strategyDecision.id,
+            responseQuality: 0.9, // Workflows generally produce high quality
+            responseTime: Date.now() - strategyStartTime,
+            tokensUsed: workflowResult.tokensUsed,
+            errorOccurred: false,
+            retryCount: 0,
+            userFeedback: undefined
+          });
+        }
+
+        // Store message and return response
+        await memory.saveMessage(currentConversationId, 'user', lastUserMessage.content);
+        await memory.saveMessage(currentConversationId, 'assistant', workflowResult.response, model);
+
+        return new NextResponse(
+          JSON.stringify({
+            content: workflowResult.response,
+            model: strategyDecision.selectedModel,
+            strategy: strategyDecision.strategyName,
+            workflowMetadata: workflowResult.workflowMetadata,
+            decisionId: strategyDecision.id,
+            metadata: {
+              detectedTheme: strategyDecision.metadata?.detectedTheme,
+              complexityScore: strategyDecision.complexityScore,
+              temperature: temperature,
+              maxTokens: maxTokens
+            }
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+
+      } catch (error) {
+        console.error('[Workflow] Error executing workflow:', error);
+        // Fall through to normal single-model execution
       }
     }
 

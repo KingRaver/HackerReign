@@ -77,9 +77,12 @@ export interface EnsembleConfig {
 // ============================================================
 // RESOURCE MANAGEMENT
 // ============================================================
+// Environment Variables:
+// - DISABLE_RAM_CONSTRAINTS=true : Disables all RAM-based downgrades (let the machine cook!)
+// - Only critical OOM protection remains (< 30% of model RAM requirement)
 
 export interface ResourceConfig {
-  maxRAM?: number;          // MB
+  maxRAM?: number;          // MB - very permissive by default (95% or unlimited if DISABLE_RAM_CONSTRAINTS=true)
   maxGPULayers?: number;    // Number of GPU layers
   maxCPUThreads?: number;   // CPU thread count
   thermalThreshold?: number; // Celsius
@@ -258,14 +261,13 @@ export interface ComplexitySignals {
 // STRATEGY TYPES
 // ============================================================
 
-export type StrategyType = 
+export type StrategyType =
   | 'balanced'      // Complexity-based (MVP)
   | 'speed'         // Always fast models
   | 'quality'       // Always best models
   | 'cost'          // Token optimization
-  | 'chain'         // Multi-model chaining
-  | 'ensemble'      // Ensemble voting
-  | 'adaptive';     // ML-driven (future)
+  | 'adaptive'      // ML-driven with feedback learning
+  | 'workflow';     // Multi-model workflows (Chain & Ensemble)
 
 export type ModelSize = '3B' | '7B' | '14B' | '16B' | '32B';
 

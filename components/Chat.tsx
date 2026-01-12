@@ -24,7 +24,8 @@ interface Message {
   };
 }
 
-type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive';
+type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive' | 'workflow';
+type WorkflowMode = 'auto' | 'chain' | 'ensemble';
 
 export default function Chat() {
   // State Management
@@ -37,6 +38,7 @@ export default function Chat() {
   const [manualMode, setManualMode] = useState<'' | 'learning' | 'code-review' | 'expert'>('');
   const [strategyEnabled, setStrategyEnabled] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('balanced');
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('auto');
   const [autoSelectedModel, setAutoSelectedModel] = useState<string>('');
   
   // Refs
@@ -162,7 +164,8 @@ export default function Chat() {
           enableTools,
           manualModeOverride: manualMode || undefined,
           strategyEnabled,
-          selectedStrategy: strategyEnabled ? selectedStrategy : undefined
+          selectedStrategy: strategyEnabled ? selectedStrategy : undefined,
+          workflowMode: selectedStrategy === 'workflow' ? workflowMode : undefined
         })
       });
 
@@ -360,6 +363,7 @@ export default function Chat() {
         manualMode={manualMode}
         strategyEnabled={strategyEnabled}
         selectedStrategy={selectedStrategy}
+        workflowMode={workflowMode}
         enableTools={enableTools}
         voiceEnabled={voiceEnabled}
         autoSelectedModel={autoSelectedModel}
@@ -368,6 +372,7 @@ export default function Chat() {
         onModeChange={setManualMode}
         onStrategyToggle={setStrategyEnabled}
         onStrategyChange={setSelectedStrategy}
+        onWorkflowModeChange={setWorkflowMode}
         onToolsToggle={() => setEnableTools(!enableTools)}
         onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
         models={models}

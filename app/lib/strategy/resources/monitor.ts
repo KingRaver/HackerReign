@@ -20,7 +20,13 @@ export interface SystemResourceInfo {
 export async function getSystemResources(): Promise<SystemResourceInfo> {
   const totalRAM = os.totalmem() / 1024 / 1024; // MB
   const freeRAM = os.freemem() / 1024 / 1024;
-  const availableRAM = freeRAM * 0.8; // Conservative 80%
+
+  // Check for environment variable override
+  const disableConstraints = process.env.DISABLE_RAM_CONSTRAINTS === 'true';
+
+  // Use full free RAM plus headroom - let the machine cook!
+  // System can handle swap/virtual memory, so report generously
+  const availableRAM = disableConstraints ? freeRAM * 2.0 : freeRAM * 1.2; // Allow swap/virtual memory usage
 
   // CPU info
   const cpus = os.cpus();

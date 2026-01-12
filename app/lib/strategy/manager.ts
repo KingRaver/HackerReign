@@ -14,6 +14,7 @@ import {
   PerformanceMetrics
 } from './types';
 import { AdaptiveStrategy } from './implementations/adaptiveStrategy';
+import { WorkflowStrategy } from './implementations/workflowStrategy';
 import { withResourceConstraints } from './resources/constraints';
 
 /**
@@ -36,6 +37,7 @@ export class StrategyManager {
     this.strategies.set('quality', new QualityStrategy());
     this.strategies.set('cost', new CostStrategy());
     this.strategies.set('adaptive', new AdaptiveStrategy());
+    this.strategies.set('workflow', new WorkflowStrategy());
   }
 
   async executeStrategy(
