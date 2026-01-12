@@ -1,6 +1,6 @@
 # Hacker Reign
 
-An advanced Next.js-powered AI chat application with local LLM integration via Ollama, featuring intelligent multi-model orchestration, domain-aware context detection, voice interaction with Whisper STT and Piper TTS, persistent conversation memory with semantic search, deep learning code generation, and advanced tool support.
+An advanced Next.js-powered AI chat application with local LLM integration via Ollama, featuring intelligent multi-model orchestration, adaptive learning system with pattern recognition and quality prediction, domain-aware context detection, voice interaction with Whisper STT and Piper TTS, persistent conversation memory with semantic search, deep learning code generation, and advanced tool support.
 
 ## Features
 
@@ -20,6 +20,28 @@ An advanced Next.js-powered AI chat application with local LLM integration via O
   - **Ensemble**: Parallel voting for consensus
 - **Resource Management**: Automatic adaptation to RAM, CPU, GPU, and battery constraints
 - **Analytics**: SQLite-based performance tracking with continuous learning
+
+### 🎓 Adaptive Learning System
+- **Pattern Recognition**: Identifies successful and unsuccessful interaction patterns
+  - Tracks context features (mode, domain, complexity, model used)
+  - Pattern effectiveness scoring and ranking
+  - SQLite-based pattern storage for persistent learning
+- **Hyperparameter Tuning**: Intelligent optimization based on feedback
+  - A/B testing framework for parameter experiments
+  - Temperature, max tokens, and top-p optimization
+  - Automated tuning based on user feedback and performance metrics
+- **Quality Prediction**: Pre-generation quality assessment
+  - Predicts response quality before generating output
+  - ML-driven predictions using historical data
+  - Integration with strategy selection for optimal routing
+- **Learning Dashboard**: Visual analytics interface for insights
+  - Real-time learning metrics and pattern visualization
+  - Parameter tuning experiment results
+  - Quality prediction accuracy tracking
+- **Feedback Loop**: Continuous improvement from user ratings
+  - User feedback collection via dedicated API
+  - Feeds into pattern recognition and quality prediction
+  - Enhances adaptive strategy performance over time
 
 ### 🎯 Domain Context System
 - **Automatic Mode Detection**: Analyzes user input to select optimal interaction style
@@ -302,6 +324,8 @@ hackerreign/
 ├── app/
 │   ├── api/
 │   │   ├── llm/route.ts              # Main LLM endpoint with strategy integration
+│   │   ├── analytics/route.ts        # Learning and strategy analytics API
+│   │   ├── feedback/route.ts         # User feedback collection endpoint
 │   │   ├── stt/route.ts              # Whisper speech-to-text
 │   │   ├── piper-tts/route.ts        # Piper text-to-speech
 │   │   └── dl-codegen/               # Deep learning code generation
@@ -329,6 +353,12 @@ hackerreign/
 │   │   │   ├── analytics/            # Performance tracking
 │   │   │   │   └── tracker.ts        # SQLite analytics
 │   │   │   └── orchestrator.ts       # Workflow execution
+│   │   │
+│   │   ├── learning/                 # Adaptive learning system
+│   │   │   ├── patternRecognition.ts # Pattern detection and analysis
+│   │   │   ├── parameterTuner.ts     # Hyperparameter optimization
+│   │   │   ├── qualityPredictor.ts   # Quality prediction system
+│   │   │   └── README.md             # Learning system documentation
 │   │   │
 │   │   ├── domain/                   # Context detection system
 │   │   │   ├── contextDetector.ts    # Mode/domain/complexity detection
@@ -366,6 +396,8 @@ hackerreign/
 │
 ├── components/
 │   ├── Chat.tsx                      # Main chat component
+│   ├── LearningDashboard.tsx         # Learning analytics dashboard
+│   ├── TopNav.tsx                    # Top navigation bar
 │   ├── VoiceOrb.tsx                  # 2D canvas audio visualization
 │   └── ParticleOrb.tsx               # 3D Three.js particle system
 │
@@ -378,6 +410,9 @@ hackerreign/
 │   └── hackerreign.db-wal            # SQLite write-ahead log
 │
 ├── data/                             # Application data
+│   ├── learning_patterns.db          # Pattern recognition database
+│   ├── parameter_tuning.db           # Hyperparameter tuning database
+│   ├── quality_predictions.db        # Quality prediction database
 │   └── strategy_analytics.db         # Strategy performance analytics
 │
 └── public/
@@ -392,6 +427,13 @@ hackerreign/
 - **POST /api/llm**: Main chat endpoint with strategy system integration
   - Accepts: `messages`, `strategyEnabled`, `selectedStrategy`, `filePath`, `manualModeOverride`
   - Returns: Streaming response with auto-selected model info
+
+### Learning & Analytics
+- **GET /api/analytics**: Retrieve learning and strategy analytics
+  - Returns: Aggregated metrics, historical trends, performance comparisons
+- **POST /api/feedback**: Collect user feedback on AI responses
+  - Accepts: `interactionId`, `rating`, `feedback`, `context`
+  - Used by learning system for continuous improvement
 
 ### Voice
 - **POST /api/stt**: Whisper speech-to-text transcription
@@ -529,6 +571,7 @@ npm run type-check  # Check TypeScript types
 - **Project Structure**: [STRUCTURE.md](STRUCTURE.md) - Complete project organization
 - **LLM Models Guide**: [MODELS.md](MODELS.md) - Model selection and configuration
 - **Future Roadmap**: [FUTURE.md](FUTURE.md) - Planned features and enhancements
+- **Learning System**: [app/lib/learning/README.md](app/lib/learning/README.md) - Adaptive learning documentation
 - **Memory & RAG**: [app/lib/memory/README.md](app/lib/memory/README.md)
 - **Memory Integration**: [app/lib/memory/INTEGRATION_GUIDE.md](app/lib/memory/INTEGRATION_GUIDE.md)
 - **Memory File Manifest**: [app/lib/memory/FILE_MANIFEST.md](app/lib/memory/FILE_MANIFEST.md)
@@ -537,6 +580,15 @@ npm run type-check  # Check TypeScript types
 - **Voice Optimization**: [app/lib/voice/VOICE_OPTIMIZATION.md](app/lib/voice/VOICE_OPTIMIZATION.md)
 
 ## Recent Updates
+
+### v2.1.0 - Adaptive Learning System (January 2026)
+- **Pattern Recognition**: Automated detection of successful interaction patterns
+- **Hyperparameter Tuning**: A/B testing and optimization framework
+- **Quality Prediction**: Pre-generation quality assessment using ML
+- **Learning Dashboard**: Visual analytics interface for insights
+- **Feedback API**: User feedback collection for continuous improvement
+- **Analytics API**: Comprehensive metrics and performance tracking
+- **Integration**: Seamless integration with adaptive strategy system
 
 ### v2.0.0 - Multi-Model Strategy System
 - **Intelligent Orchestration**: Automatic model selection based on complexity

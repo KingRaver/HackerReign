@@ -8,11 +8,15 @@ hackerreign/
 │
 ├── app/                          # Next.js App Router directory
 │   ├── api/                      # API routes
+│   │   ├── analytics/            # Analytics endpoint
+│   │   │   └── route.ts          # Strategy and learning analytics API
 │   │   ├── dl-codegen/           # Deep learning code generation endpoints
 │   │   │   ├── train/            # Model training endpoint
 │   │   │   │   └── route.ts      # Train LSTM model on code samples
 │   │   │   └── predict/          # Code prediction endpoint
 │   │   │       └── route.ts      # Generate code completions using trained model
+│   │   ├── feedback/             # User feedback endpoint
+│   │   │   └── route.ts          # Collect user feedback on AI responses
 │   │   ├── llm/                  # LLM endpoint
 │   │   │   └── route.ts          # LLM API handler with tool support & strategy selection
 │   │   ├── piper-tts/            # Piper TTS endpoint
@@ -28,6 +32,11 @@ hackerreign/
 │   │   │   ├── preprocess.ts     # Text tokenization and sequence preparation
 │   │   │   ├── model.ts          # LSTM neural network architecture (TensorFlow.js)
 │   │   │   └── train.ts          # Training loop and model persistence
+│   │   ├── learning/             # Adaptive learning and quality prediction system
+│   │   │   ├── README.md         # Learning system documentation
+│   │   │   ├── patternRecognition.ts  # Pattern recognition and analysis
+│   │   │   ├── parameterTuner.ts      # Hyperparameter tuning and optimization
+│   │   │   └── qualityPredictor.ts    # Quality prediction and assessment
 │   │   ├── domain/               # Domain context detection system
 │   │   │   ├── contextDetector.ts  # Detects mode, file type, domain, complexity
 │   │   │   ├── modeDefinitions.ts  # Interaction mode system prompts
@@ -95,6 +104,8 @@ hackerreign/
 │
 ├── components/                   # React components
 │   ├── Chat.tsx                  # Chat interface component
+│   ├── LearningDashboard.tsx     # Learning system dashboard and analytics UI
+│   ├── TopNav.tsx                # Top navigation bar component
 │   ├── VoiceOrb.tsx              # Canvas-based 2D voice visualization component
 │   └── ParticleOrb.tsx           # Three.js 3D particle visualization component
 │
@@ -107,6 +118,9 @@ hackerreign/
 │   └── hackerreign.db-wal        # SQLite write-ahead log
 │
 ├── data/                         # Application data
+│   ├── learning_patterns.db      # Pattern recognition database
+│   ├── parameter_tuning.db       # Hyperparameter tuning database
+│   ├── quality_predictions.db    # Quality prediction database
 │   └── strategy_analytics.db     # Strategy performance analytics database
 │
 ├── public/                       # Static assets
@@ -172,6 +186,33 @@ Deep learning-based code generation system using TensorFlow.js:
 **API Endpoints:**
 - POST `/api/dl-codegen/train` - Train model on code samples
 - POST `/api/dl-codegen/predict` - Generate code completions
+
+#### `/app/lib/learning`
+Adaptive learning and quality prediction system for continuous improvement:
+- **patternRecognition.ts** - Identifies patterns in successful/failed interactions
+- **parameterTuner.ts** - Optimizes hyperparameters based on feedback and performance
+- **qualityPredictor.ts** - Predicts response quality before generation
+- **README.md** - Documentation for the learning system
+
+**Features:**
+- Pattern recognition across multiple interaction types
+- Automated hyperparameter tuning with A/B testing
+- Quality prediction using machine learning models
+- SQLite-based data persistence for learning patterns
+- Continuous feedback loop for model improvement
+- Integration with strategy selection system
+- Performance metrics and analytics tracking
+
+**Databases:**
+- `data/learning_patterns.db` - Stores recognized patterns and their effectiveness
+- `data/parameter_tuning.db` - Tracks parameter experiments and results
+- `data/quality_predictions.db` - Historical quality predictions and outcomes
+
+**Integration:**
+- Works with adaptive strategy for intelligent model selection
+- Feeds into analytics system for comprehensive insights
+- Uses user feedback via `/api/feedback` endpoint
+- Monitors and optimizes strategy performance over time
 
 #### `/app/lib/domain`
 Domain-aware context detection and system prompt generation:
@@ -316,6 +357,17 @@ Reusable React components used across the application:
   - Subscribes to voice state changes for UI updates
   - Handles LLM responses and auto-TTS playback
   - Passes selected mode to API for context-aware responses
+- **LearningDashboard.tsx** - Learning system dashboard and analytics visualization
+  - Displays learning patterns, metrics, and insights
+  - Real-time performance tracking and quality predictions
+  - Parameter tuning status and experiment results
+  - Integration with learning system databases
+  - Visual charts and graphs for analytics data
+- **TopNav.tsx** - Top navigation bar component
+  - Application-wide navigation and controls
+  - Quick access to features and settings
+  - Responsive design for mobile and desktop
+  - Integration with app routing and state management
 - **VoiceOrb.tsx** - Canvas-based 2D animated orb for voice visualization
   - Real-time audio level visualization with pulsing effects
   - State-based color schemes (listening: red, speaking: cyan, idle: teal)
@@ -354,6 +406,51 @@ See `package.json` for available npm scripts:
 - `npm run type-check` - Check TypeScript types
 
 ## Recent Updates
+
+### Adaptive Learning System (January 2026)
+- **Pattern Recognition**: Automated pattern detection in user interactions
+  - Identifies successful and unsuccessful interaction patterns
+  - Tracks context features (mode, domain, complexity, model used)
+  - SQLite-based pattern storage (data/learning_patterns.db)
+  - Pattern effectiveness scoring and ranking
+
+- **Parameter Tuning**: Intelligent hyperparameter optimization
+  - A/B testing framework for parameter experiments
+  - Automated tuning based on user feedback and performance metrics
+  - Temperature, max tokens, top-p optimization
+  - Experiment tracking and result analysis (data/parameter_tuning.db)
+
+- **Quality Prediction**: Pre-generation quality assessment
+  - Predicts response quality before generating output
+  - Uses historical data and ML models for prediction
+  - Confidence scoring for quality estimates
+  - Integration with strategy selection for optimal routing
+  - Quality tracking database (data/quality_predictions.db)
+
+- **Learning Dashboard**: Visual analytics interface
+  - Real-time learning metrics and insights
+  - Pattern effectiveness visualization
+  - Parameter tuning experiment results
+  - Quality prediction accuracy tracking
+  - Interactive charts and graphs
+
+- **Feedback API**: User feedback collection endpoint
+  - POST `/api/feedback` - Collect user ratings and feedback
+  - Feeds into learning system for continuous improvement
+  - Tracks feedback by interaction ID
+  - Integration with pattern recognition and quality prediction
+
+- **Analytics API**: Comprehensive analytics endpoint
+  - GET `/api/analytics` - Retrieve learning and strategy analytics
+  - Aggregated metrics across all systems
+  - Historical trend analysis
+  - Performance comparison reports
+
+**Integration:**
+- Works seamlessly with adaptive strategy for intelligent model selection
+- Enhances domain context system with learned patterns
+- Continuous feedback loop improves over time
+- All learning data persisted in SQLite databases
 
 ### LLM Strategy Selection System (January 2026)
 - **Strategy Framework**: Intelligent model selection based on task characteristics
