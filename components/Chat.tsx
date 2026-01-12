@@ -154,13 +154,17 @@ export default function Chat() {
       }
 
       // Send to LLM API
+      // Workflow doesn't support streaming, so force stream: false when workflow is selected
+      const isWorkflow = strategyEnabled && selectedStrategy === 'workflow';
+      const shouldStream = !enableTools && !isWorkflow;
+
       const response = await fetch('/api/llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model,
           messages: [...messages, userMsg],
-          stream: !enableTools,
+          stream: shouldStream,
           enableTools,
           manualModeOverride: manualMode || undefined,
           strategyEnabled,
@@ -174,7 +178,7 @@ export default function Chat() {
       const aiId = (Date.now() + 1).toString();
       const requestStartTime = Date.now();
 
-      if (enableTools) {
+      if (!shouldStream) {
         // Non-streaming response (tools enabled)
         const data = await response.json();
         const content = data.content || '';
