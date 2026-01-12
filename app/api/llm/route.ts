@@ -15,7 +15,7 @@ const openai = new OpenAI({
 });
 
 export const runtime = 'nodejs'; // Required for SQLite/Chroma
-export const maxDuration = 600; // 10 minutes max for complex queries (local dev - Vercel limit is 300s)
+export const maxDuration = 3600; // 60 minutes max for complex queries (local dev - Vercel limit is 300s, but we need more time for chain workflows)
 
 export async function POST(req: NextRequest) {
   // Declare strategy variables outside try block for error handling

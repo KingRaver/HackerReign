@@ -10,7 +10,9 @@ import { ModelChainConfig, ModelChainStep } from '../types';
 
 const openai = new OpenAI({
   baseURL: 'http://localhost:11434/v1',
-  apiKey: 'ollama'
+  apiKey: 'ollama',
+  timeout: 0, // Disable timeout - let chain steps cook as long as needed
+  maxRetries: 0 // Don't retry, let it cook
 });
 
 export class ModelChainWorkflow {

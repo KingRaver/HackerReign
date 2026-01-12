@@ -53,7 +53,12 @@ export class EnsembleWorkflow {
     messages: any[],
     question: string
   ): Promise<ModelVote> {
-    const openai = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' });
+    const openai = new OpenAI({
+      baseURL: 'http://localhost:11434/v1',
+      apiKey: 'ollama',
+      timeout: 0, // Disable timeout - let ensemble votes cook as long as needed
+      maxRetries: 0 // Don't retry, let it cook
+    });
 
     const response = await openai.chat.completions.create({
       model,
