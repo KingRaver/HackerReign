@@ -308,18 +308,14 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
 
       const url = 'http://localhost:11434/v1/chat/completions';
 
-      // No timeout - let complex queries take as long as they need
-      // Configure undici timeouts (Next.js fetch uses undici)
+      // Undici is configured globally in instrumentation.ts with no timeouts
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive'
         },
-        body: JSON.stringify(body),
-        // @ts-ignore - undici-specific options for Next.js fetch
-        headersTimeout: 3600000, // 1 hour in milliseconds
-        bodyTimeout: 3600000 // 1 hour in milliseconds
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
