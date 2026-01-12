@@ -1,19 +1,12 @@
 // app/lib/strategy/workflows/chain.ts
-import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 import { ModelChainConfig, ModelChainStep } from '../types';
 
 /**
  * Model Chaining Workflow - COMPLETE IMPLEMENTATION
  * Fast draft → Quality refine → Expert review pipeline
+ * Uses fetch directly (like streaming endpoint) to avoid SDK timeout issues
  */
-
-const openai = new OpenAI({
-  baseURL: 'http://localhost:11434/v1',
-  apiKey: 'ollama',
-  timeout: 0, // Disable timeout - let chain steps cook as long as needed
-  maxRetries: 0 // Don't retry, let it cook
-});
 
 export class ModelChainWorkflow {
   /**
@@ -65,13 +58,21 @@ export class ModelChainWorkflow {
           break;
         }
 
-      } catch (error) {
+      } catch (error: any) {
         console.error(`[Chain:${step.role}] Error:`, error);
-        // Continue with error message
+        console.error(`[Chain:${step.role}] Error details:`, {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+          type: error.type,
+          model: step.model
+        });
+
+        // Continue with error message - include model info for debugging
         chainResults.push({
           model: step.model,
           role: step.role,
-          output: `ERROR in ${step.role}: ${error}`,
+          output: `ERROR in ${step.role} (model: ${step.model}): ${error.message || error}\n\nThis may indicate the model is not loaded. Try running: ollama pull ${step.model}`,
           tokensUsed: 50,
           confidence: 0,
           timeMs: Date.now() - stepStart
@@ -120,14 +121,44 @@ export class ModelChainWorkflow {
       }
     ];
 
-    const completion = await openai.chat.completions.create({
+    // Use fetch directly like the streaming endpoint does - no timeout issues
+    const body = {
       model: step.model,
       messages,
       max_tokens: step.maxTokens || (isFinalStep ? 6000 : 3000),
       temperature: step.temperature || (isFinalStep ? 0.3 : 0.6),
       top_p: 0.9,
-      stream: false
+      stream: false,
+      options: {
+        num_thread: 12,
+        num_gpu: 99,
+        num_ctx: 8192,
+        repeat_penalty: 1.2,
+        num_batch: 512,
+        num_predict: step.maxTokens || (isFinalStep ? 6000 : 3000)
+      }
+    };
+
+    // No timeout - let complex chain steps cook as long as needed
+    // Configure undici timeouts (Next.js fetch uses undici)
+    const response = await fetch('http://localhost:11434/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Connection': 'keep-alive'
+      },
+      body: JSON.stringify(body),
+      // @ts-ignore - undici-specific options for Next.js fetch
+      headersTimeout: 3600000, // 1 hour in milliseconds
+      bodyTimeout: 3600000 // 1 hour in milliseconds
     });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Ollama error: ${response.status} - ${error}`);
+    }
+
+    const completion = await response.json();
 
     const output = completion.choices[0].message.content?.trim() || '';
     const tokensUsed = completion.usage?.total_tokens || output.length / 4;

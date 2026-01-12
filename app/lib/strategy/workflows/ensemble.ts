@@ -1,10 +1,10 @@
 // app/lib/strategy/workflows/ensemble.ts
-import OpenAI from 'openai';
 import { EnsembleConfig } from '../types';
 
 /**
  * Ensemble Voting Workflow - COMPLETE IMPLEMENTATION
  * Parallel models → Weighted consensus
+ * Uses fetch directly (like streaming endpoint) to avoid SDK timeout issues
  */
 
 export class EnsembleWorkflow {
@@ -53,14 +53,8 @@ export class EnsembleWorkflow {
     messages: any[],
     question: string
   ): Promise<ModelVote> {
-    const openai = new OpenAI({
-      baseURL: 'http://localhost:11434/v1',
-      apiKey: 'ollama',
-      timeout: 0, // Disable timeout - let ensemble votes cook as long as needed
-      maxRetries: 0 // Don't retry, let it cook
-    });
-
-    const response = await openai.chat.completions.create({
+    // Use fetch directly like the streaming endpoint does - no timeout issues
+    const body = {
       model,
       messages: [
         {
@@ -76,8 +70,38 @@ export class EnsembleWorkflow {
         ...messages
       ],
       max_tokens: 300,
-      temperature: 0.1  // High consistency
+      temperature: 0.1,  // High consistency
+      stream: false,
+      options: {
+        num_thread: 12,
+        num_gpu: 99,
+        num_ctx: 8192,
+        repeat_penalty: 1.2,
+        num_batch: 512,
+        num_predict: 300
+      }
+    };
+
+    // No timeout - let complex ensemble votes cook as long as needed
+    // Configure undici timeouts (Next.js fetch uses undici)
+    const fetchResponse = await fetch('http://localhost:11434/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Connection': 'keep-alive'
+      },
+      body: JSON.stringify(body),
+      // @ts-ignore - undici-specific options for Next.js fetch
+      headersTimeout: 3600000, // 1 hour in milliseconds
+      bodyTimeout: 3600000 // 1 hour in milliseconds
     });
+
+    if (!fetchResponse.ok) {
+      const error = await fetchResponse.text();
+      throw new Error(`Ollama error: ${fetchResponse.status} - ${error}`);
+    }
+
+    const response = await fetchResponse.json();
 
     let verdictData: VerdictData;
     try {

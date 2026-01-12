@@ -10,7 +10,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 const openai = new OpenAI({
   baseURL: 'http://localhost:11434/v1',
   apiKey: 'ollama',
-  timeout: 0, // Disable timeout completely - let it cook as long as needed
+  timeout: 3600000, // 1 hour timeout (milliseconds) - let it cook as long as needed
   maxRetries: 0 // Don't retry, let it cook
 });
 
@@ -309,13 +309,17 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
       const url = 'http://localhost:11434/v1/chat/completions';
 
       // No timeout - let complex queries take as long as they need
+      // Configure undici timeouts (Next.js fetch uses undici)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        // @ts-ignore - undici-specific options for Next.js fetch
+        headersTimeout: 3600000, // 1 hour in milliseconds
+        bodyTimeout: 3600000 // 1 hour in milliseconds
       });
 
       if (!response.ok) {
