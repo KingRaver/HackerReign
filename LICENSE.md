@@ -27,7 +27,7 @@ This software and associated documentation files (the "Software") are the propri
 
 ## Contact
 
-For licensing inquiries, please contact Vivid Visions.
+For licensing inquiries, please contact Vivid Visions @ vividvisions.ai@gmail.com
 
 ---
 
