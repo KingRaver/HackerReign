@@ -1,4 +1,3 @@
-```
 Hacker Reign processes information through interconnected systems like strategy selection, domain context, memory RAG, and LLM orchestration, as detailed in the project documentation.[file:3][file:2]
 
 ## Overall Flow
