@@ -5,7 +5,6 @@ User input enters via chat or voice, triggering context analysis for mode, domai
 
 Memory retrieves similar past conversations using embeddings and vector search before LLM inference.
 
-## Mermaid Flowchart
 ```mermaid
 graph TB
     subgraph "User Input Layer"
@@ -92,8 +91,6 @@ graph TB
     classDef subsystem fill:#e1f5fe
     class MS,ST,RA,EM,RE,AN,CD,MD,DK,CB,CTX,SM,SR,WO,RM,AT,INF,FB,PR,PT,QP,LD subsystem
 ```
-
-This flowchart captures the core information processing pipeline from input to adaptive feedback loop.
 
 ## Memory System Details
 Memory uses SQLite for conversation persistence and ChromaDB for vector search. Ollama generates 384-dim embeddings; retrieval finds top-K similar messages (threshold ~0.7) for RAG context injection.
