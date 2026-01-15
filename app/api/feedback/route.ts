@@ -3,10 +3,18 @@ import { strategyManager } from '@/app/lib/strategy/manager';
 import { patternRecognizer } from '@/app/lib/learning/patternRecognition';
 import { parameterTuner } from '@/app/lib/learning/parameterTuner';
 import { qualityPredictor } from '@/app/lib/learning/qualityPredictor';
+import { modeAnalytics } from '@/app/lib/domain/modeAnalytics';
 
 /**
  * Feedback API Endpoint
  * Captures user feedback for continuous learning and adaptation
+ *
+ * IMPORTANT: Handles both strategy and mode voting independently:
+ * - Strategy votes: decisionId starts with 'decision_' → strategy_analytics.db
+ * - Mode votes: decisionId starts with 'mode_' → mode_analytics.db
+ *
+ * This separation prevents FOREIGN KEY constraint errors when voting in
+ * Auto mode without Strategy enabled.
  */
 
 export async function POST(req: NextRequest) {
@@ -26,12 +34,13 @@ export async function POST(req: NextRequest) {
       modelUsed,
       responseTime,
       tokensUsed,
-      userMessage
+      userMessage,
+      mode // Track interaction mode (learning, code-review, expert, auto)
     } = await req.json();
 
-    if (!decisionId || !feedback) {
+    if (!feedback) {
       return NextResponse.json(
-        { error: 'Missing required fields: decisionId and feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -39,16 +48,33 @@ export async function POST(req: NextRequest) {
     // Calculate quality score based on feedback
     const qualityScore = feedback === 'positive' ? 0.95 : feedback === 'negative' ? 0.3 : 0.7;
 
-    // Update the strategy outcome with user feedback
-    await strategyManager.logOutcome(decisionId, {
-      decisionId,
-      responseQuality: qualityScore,
-      responseTime: responseTime || 0,
-      tokensUsed: tokensUsed || 0,
-      errorOccurred: false,
-      retryCount: 0,
-      userFeedback: feedback
-    });
+    // Check if we have a valid strategy decision ID
+    const hasValidDecisionId = decisionId &&
+                                decisionId !== 'undefined' &&
+                                decisionId !== 'null' &&
+                                decisionId.startsWith('decision_'); // Strategy decisions start with 'decision_'
+
+    // Update the strategy outcome ONLY if we have a valid strategy decision
+    // (Strategy was enabled during this interaction)
+    if (hasValidDecisionId) {
+      try {
+        await strategyManager.logOutcome(decisionId, {
+          decisionId,
+          responseQuality: qualityScore,
+          responseTime: responseTime || 0,
+          tokensUsed: tokensUsed || 0,
+          errorOccurred: false,
+          retryCount: 0,
+          userFeedback: feedback
+        });
+        console.log(`[Feedback] Strategy outcome logged for decision ${decisionId}`);
+      } catch (error: any) {
+        console.warn(`[Feedback] Could not log strategy outcome for ${decisionId}:`, error.message);
+        // Continue - mode tracking should still work
+      }
+    } else {
+      console.log(`[Feedback] No strategy decision (using mode ${mode || 'auto'} without strategy enabled)`);
+    }
 
     // Record pattern recognition feedback for theme learning
     if (theme && userMessage) {
@@ -94,7 +120,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`[Feedback] User ${feedback} feedback recorded for decision ${decisionId} (theme: ${theme}, quality: ${qualityScore})`);
+    // Record mode interaction feedback (for learning, code-review, expert, auto modes)
+    if (mode) {
+      await modeAnalytics.updateFeedback(decisionId, feedback);
+      console.log(`[Feedback] Mode ${mode} feedback: ${feedback} (quality: ${qualityScore})`);
+    }
+
+    console.log(`[Feedback] User ${feedback} feedback recorded for decision ${decisionId} (theme: ${theme}, mode: ${mode || 'none'}, quality: ${qualityScore})`);
 
     return NextResponse.json({
       success: true,
@@ -105,7 +137,8 @@ export async function POST(req: NextRequest) {
       learningUpdated: {
         themePattern: !!theme,
         parameterTuning: !!(theme && complexity !== undefined),
-        qualityPrediction: !!(theme && complexity !== undefined && modelUsed)
+        qualityPrediction: !!(theme && complexity !== undefined && modelUsed),
+        modeTracking: !!mode
       }
     });
 

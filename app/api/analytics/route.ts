@@ -3,6 +3,7 @@ import { patternRecognizer } from '@/app/lib/learning/patternRecognition';
 import { parameterTuner } from '@/app/lib/learning/parameterTuner';
 import { qualityPredictor } from '@/app/lib/learning/qualityPredictor';
 import { strategyManager } from '@/app/lib/strategy/manager';
+import { modeAnalytics } from '@/app/lib/domain/modeAnalytics';
 
 /**
  * Analytics API Endpoint
@@ -36,17 +37,27 @@ export async function GET(req: NextRequest) {
 
     if (type === 'all' || type === 'strategies') {
       // Get strategy performance for each type
-      const strategyTypes = ['balanced', 'speed', 'quality', 'cost', 'adaptive'];
+      const strategyTypes = ['balanced', 'speed', 'quality', 'cost', 'adaptive', 'workflow'];
       const strategyPerf = await Promise.all(
         strategyTypes.map(async (strategyType: any) => {
           const perf = await strategyManager.getStrategyPerformance(strategyType);
+          // Get detailed feedback breakdown
+          const analytics = new (await import('@/app/lib/strategy/analytics/tracker')).StrategyAnalytics();
+          const feedback = await analytics.getFeedbackBreakdown(strategyType);
           return {
             strategy: strategyType,
-            ...perf
+            ...perf,
+            feedbackBreakdown: feedback
           };
         })
       );
       data.strategies = strategyPerf;
+    }
+
+    if (type === 'all' || type === 'modes') {
+      // Get mode performance for each interaction mode
+      const modesPerf = await modeAnalytics.getAllModesPerformance();
+      data.modes = modesPerf.filter(m => m.totalInteractions > 0); // Only show modes with data
     }
 
     return NextResponse.json({

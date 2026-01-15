@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
  * Uses Piper TTS via Python CLI (python3 -m piper)
  * Voice models stored in ~/.piper/models/
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   let tempOutputFile: string | null = null;
 
   try {

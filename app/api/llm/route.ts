@@ -282,6 +282,33 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
     // ============================================================
 
     // For streaming: use fetch for manual control
+    // ============================================================
+    // CREATE MODE INTERACTION (before streaming/non-streaming)
+    // ============================================================
+    // Store the modeInteractionId to return to frontend for voting
+    let modeInteractionId: string | undefined = undefined;
+
+    if (!strategyEnabled) {
+      try {
+        const { modeAnalytics } = await import('@/app/lib/domain/modeAnalytics');
+        const currentMode = manualModeOverride || 'auto';
+        modeInteractionId = `mode_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+        await modeAnalytics.logInteraction({
+          id: modeInteractionId,
+          mode: currentMode,
+          modelUsed: model,
+          responseQuality: 0.8, // Default, will be updated by user feedback
+          responseTime: 0, // Will be updated after response completes
+          tokensUsed: 0, // Will be updated after response completes
+          userFeedback: null
+        });
+        console.log(`[Mode] Interaction logged: ${currentMode} (${modeInteractionId})`);
+      } catch (error) {
+        console.warn('[Mode] Error logging interaction:', error);
+      }
+    }
+
     if (stream) {
       const body: any = {
         model,
@@ -336,7 +363,8 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
               const reader = response.body?.getReader();
               if (!reader) throw new Error('No response body');
 
-              // Send decision metadata first for frontend feedback tracking
+              // Send metadata first for frontend feedback tracking
+              // Either strategy decision or mode interaction
               if (strategyEnabled && strategyDecision) {
                 const metadataChunk = {
                   type: 'metadata',
@@ -345,6 +373,17 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
                   complexity: strategyDecision.complexityScore,
                   temperature: temperature,
                   maxTokens: maxTokens,
+                  modelUsed: model
+                };
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify(metadataChunk)}\n\n`)
+                );
+              } else if (modeInteractionId) {
+                // Send mode interaction ID for voting without strategy
+                const metadataChunk = {
+                  type: 'metadata',
+                  decisionId: modeInteractionId,
+                  mode: manualModeOverride || 'auto',
                   modelUsed: model
                 };
                 controller.enqueue(
@@ -408,6 +447,23 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
                   console.log(`[Strategy] Outcome logged for decision ${strategyDecision.id}`);
                 } catch (error) {
                   console.warn('[Strategy] Error logging outcome:', error);
+                }
+              }
+
+              // ============================================================
+              // UPDATE MODE INTERACTION METRICS (streaming)
+              // ============================================================
+              if (!strategyEnabled && modeInteractionId) {
+                try {
+                  const { modeAnalytics } = await import('@/app/lib/domain/modeAnalytics');
+                  const responseTime = Date.now() - strategyStartTime;
+                  const tokensUsed = Math.floor(fullContent.length / 4); // Rough estimate
+
+                  // Update with actual metrics (quality will be updated by user feedback later)
+                  await modeAnalytics.updateMetrics(modeInteractionId, responseTime, tokensUsed);
+                  console.log(`[Mode] Metrics updated: ${modeInteractionId} (${responseTime}ms, ${tokensUsed} tokens)`);
+                } catch (error) {
+                  console.warn('[Mode] Error updating metrics:', error);
                 }
               }
 
@@ -578,12 +634,29 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
       }
     }
 
+    // ============================================================
+    // UPDATE MODE INTERACTION METRICS (non-streaming)
+    // ============================================================
+    if (!strategyEnabled && modeInteractionId) {
+      try {
+        const { modeAnalytics } = await import('@/app/lib/domain/modeAnalytics');
+        const responseTime = Date.now() - strategyStartTime;
+        const tokensUsed = currentCompletion.usage?.total_tokens || Math.floor(assistantMessage.length / 4);
+
+        await modeAnalytics.updateMetrics(modeInteractionId, responseTime, tokensUsed);
+        console.log(`[Mode] Metrics updated: ${modeInteractionId} (${responseTime}ms, ${tokensUsed} tokens)`);
+      } catch (error) {
+        console.warn('[Mode] Error updating metrics:', error);
+      }
+    }
+
     // Return response with conversation ID, auto-selected model, decision ID, and learning metadata
     return NextResponse.json({
       ...currentCompletion.choices[0].message,
       conversationId: currentConversationId,
       autoSelectedModel: strategyEnabled ? model : undefined,
-      decisionId: strategyEnabled && strategyDecision ? strategyDecision.id : undefined,
+      // Return either strategy decisionId or mode interactionId for voting
+      decisionId: strategyEnabled && strategyDecision ? strategyDecision.id : modeInteractionId,
       metadata: strategyEnabled && strategyDecision ? {
         detectedTheme: strategyDecision.metadata?.detectedTheme,
         complexityScore: strategyDecision.complexityScore,

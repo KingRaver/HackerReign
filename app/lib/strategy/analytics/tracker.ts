@@ -102,21 +102,24 @@ export class StrategyAnalytics {
 
   async getStrategyPerformance(strategyName: string): Promise<PerformanceMetrics> {
     const stmt = this.db.prepare(`
-      SELECT 
+      SELECT
         COUNT(*) as total_decisions,
         AVG(o.response_quality) as avg_quality,
         AVG(o.response_time_ms) as avg_time,
         AVG(o.tokens_used) as avg_tokens,
-        AVG(CASE WHEN o.user_feedback = 'positive' THEN 1 
-                 WHEN o.user_feedback = 'negative' THEN 0 
-                 ELSE 0.5 END) as satisfaction
+        AVG(CASE WHEN o.user_feedback = 'positive' THEN 1
+                 WHEN o.user_feedback = 'negative' THEN 0
+                 ELSE 0.5 END) as satisfaction,
+        SUM(CASE WHEN o.user_feedback = 'positive' THEN 1 ELSE 0 END) as positive_count,
+        SUM(CASE WHEN o.user_feedback = 'negative' THEN 1 ELSE 0 END) as negative_count,
+        SUM(CASE WHEN o.user_feedback IS NULL OR o.user_feedback = 'neutral' THEN 1 ELSE 0 END) as neutral_count
       FROM strategy_decisions d
       LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
       WHERE d.strategy_name = ?
     `);
 
     const row = stmt.get(strategyName) as any;
-    
+
     return {
       strategyName,
       totalDecisions: row.total_decisions || 0,
@@ -127,6 +130,52 @@ export class StrategyAnalytics {
       userSatisfaction: row.satisfaction || 0.8,
       costEfficiency: 0.85, // Placeholder
       lastUpdated: new Date()
+    };
+  }
+
+  // NEW: Get detailed feedback breakdown for dashboard
+  async getFeedbackBreakdown(strategyName: string): Promise<{
+    positive: number;
+    negative: number;
+    neutral: number;
+    total: number;
+    satisfactionTrend: number[];
+  }> {
+    const stmt = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN o.user_feedback = 'positive' THEN 1 ELSE 0 END) as positive,
+        SUM(CASE WHEN o.user_feedback = 'negative' THEN 1 ELSE 0 END) as negative,
+        SUM(CASE WHEN o.user_feedback IS NULL OR o.user_feedback = 'neutral' THEN 1 ELSE 0 END) as neutral,
+        COUNT(*) as total
+      FROM strategy_decisions d
+      LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
+      WHERE d.strategy_name = ?
+    `);
+
+    const row = stmt.get(strategyName) as any;
+
+    // Get trend over last 10 decisions
+    const trendStmt = this.db.prepare(`
+      SELECT
+        CASE WHEN o.user_feedback = 'positive' THEN 1
+             WHEN o.user_feedback = 'negative' THEN 0
+             ELSE 0.5 END as score
+      FROM strategy_decisions d
+      LEFT JOIN strategy_outcomes o ON d.id = o.decision_id
+      WHERE d.strategy_name = ?
+      ORDER BY d.created_at DESC
+      LIMIT 10
+    `);
+
+    const trendRows = trendStmt.all(strategyName) as any[];
+    const satisfactionTrend = trendRows.map(r => r.score || 0.5).reverse();
+
+    return {
+      positive: row.positive || 0,
+      negative: row.negative || 0,
+      neutral: row.neutral || 0,
+      total: row.total || 0,
+      satisfactionTrend
     };
   }
 

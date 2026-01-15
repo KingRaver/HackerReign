@@ -11,7 +11,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   feedback?: 'positive' | 'negative' | null;
-  decisionId?: string; // For tracking strategy decisions
+  decisionId?: string; // For tracking strategy decisions and manual mode feedback
   learningContext?: {
     theme?: string;
     complexity?: number;
@@ -21,6 +21,7 @@ interface Message {
     modelUsed?: string;
     responseTime?: number;
     tokensUsed?: number;
+    mode?: string; // Track interaction mode (learning, code-review, expert, auto)
   };
 }
 
@@ -188,8 +189,8 @@ export default function Chat() {
           id: aiId,
           role: 'assistant',
           content,
-          decisionId: data.decisionId, // Capture decision ID for feedback
-          learningContext: strategyEnabled ? {
+          decisionId: data.decisionId || aiId, // Use decisionId or fallback to message ID
+          learningContext: {
             theme: data.metadata?.detectedTheme,
             complexity: data.metadata?.complexityScore,
             temperature: data.metadata?.temperature,
@@ -197,8 +198,9 @@ export default function Chat() {
             toolsEnabled: enableTools,
             modelUsed: data.autoSelectedModel || model,
             responseTime,
-            tokensUsed: Math.floor(content.length / 4) // Rough estimate
-          } : undefined
+            tokensUsed: Math.floor(content.length / 4), // Rough estimate
+            mode: manualMode || 'auto' // Track which mode was used
+          }
         };
 
         setMessages(prev => [...prev, aiMsg]);
@@ -253,7 +255,8 @@ export default function Chat() {
                         toolsEnabled: enableTools,
                         modelUsed: parsed.modelUsed || model,
                         responseTime: 0,
-                        tokensUsed: 0
+                        tokensUsed: 0,
+                        mode: manualMode || 'auto'
                       };
                       continue; // Skip rendering this metadata chunk
                     }
@@ -275,22 +278,23 @@ export default function Chat() {
             }
 
             // After streaming completes, update message with decision ID and learning context
-            if (streamDecisionId) {
-              const responseTime = Date.now() - requestStartTime;
-              setMessages(prev => prev.map(msg =>
-                msg.id === aiId
-                  ? {
-                      ...msg,
-                      decisionId: streamDecisionId,
-                      learningContext: streamLearningContext ? {
-                        ...streamLearningContext,
-                        responseTime,
-                        tokensUsed: Math.floor(fullContent.length / 4)
-                      } : undefined
+            // Always set decisionId (even for manual mode) to enable voting
+            const finalDecisionId = streamDecisionId || aiId;
+            const responseTime = Date.now() - requestStartTime;
+            setMessages(prev => prev.map(msg =>
+              msg.id === aiId
+                ? {
+                    ...msg,
+                    decisionId: finalDecisionId,
+                    learningContext: streamLearningContext || {
+                      modelUsed: model,
+                      responseTime,
+                      tokensUsed: Math.floor(fullContent.length / 4),
+                      mode: manualMode || 'auto'
                     }
-                  : msg
-              ));
-            }
+                  }
+                : msg
+            ));
           } finally {
             reader.releaseLock();
           }
@@ -451,8 +455,8 @@ export default function Chat() {
                             </div>
                           </div>
 
-                          {/* Feedback Buttons - Continuous Learning UI */}
-                          {strategyEnabled && msg.decisionId && (
+                          {/* Feedback Buttons - Continuous Learning UI - Now available for ALL modes! */}
+                          {msg.decisionId && (
                             <div className="flex gap-2 mt-2 ml-2">
                               <button
                                 onClick={() => handleFeedback(msg.id, 'positive')}

@@ -28,6 +28,28 @@ interface StrategyAnalytics {
   averageQuality: number;
   userSatisfaction: number;
   successRate: number;
+  feedbackBreakdown?: {
+    positive: number;
+    negative: number;
+    neutral: number;
+    total: number;
+    satisfactionTrend: number[];
+  };
+}
+
+interface ModeAnalytics {
+  mode: string;
+  totalInteractions: number;
+  averageQuality: number;
+  userSatisfaction: number;
+  successRate: number;
+  feedbackBreakdown: {
+    positive: number;
+    negative: number;
+    neutral: number;
+    total: number;
+    satisfactionTrend: number[];
+  };
 }
 
 interface AnalyticsData {
@@ -35,13 +57,14 @@ interface AnalyticsData {
   parameters?: ParameterAnalytics[];
   quality?: QualityAnalytics[];
   strategies?: StrategyAnalytics[];
+  modes?: ModeAnalytics[];
 }
 
 export default function LearningDashboard() {
   const [data, setData] = useState<AnalyticsData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'themes' | 'parameters' | 'quality' | 'strategies'>('themes');
+  const [activeTab, setActiveTab] = useState<'themes' | 'parameters' | 'quality' | 'strategies' | 'modes'>('themes');
 
   useEffect(() => {
     fetchAnalytics();
@@ -85,7 +108,7 @@ export default function LearningDashboard() {
   return (
     <div className="bg-white rounded-2xl shadow-xl border-2 border-slate-200 overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-teal to-cyan-light p-6">
+      <div className="bg-linear-to-r from-teal to-cyan-light p-6">
         <h2 className="text-2xl font-bold text-white">Continuous Learning Dashboard</h2>
         <p className="text-cyan-50 text-sm mt-1">Real-time adaptation metrics and performance insights</p>
       </div>
@@ -96,7 +119,8 @@ export default function LearningDashboard() {
           { id: 'themes', label: 'Theme Patterns', count: data.themes?.length || 0 },
           { id: 'parameters', label: 'Parameter Tuning', count: data.parameters?.length || 0 },
           { id: 'quality', label: 'Quality Prediction', count: data.quality?.length || 0 },
-          { id: 'strategies', label: 'Strategy Performance', count: data.strategies?.length || 0 }
+          { id: 'strategies', label: 'Strategy Performance', count: data.strategies?.length || 0 },
+          { id: 'modes', label: 'Mode Performance', count: data.modes?.length || 0 }
         ].map(tab => (
           <button
             key={tab.id}
@@ -209,7 +233,7 @@ export default function LearningDashboard() {
                     {/* Quality bar */}
                     <div className="mt-3 h-2 bg-slate-200 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-teal to-cyan-light"
+                        className="h-full bg-linear-to-r from-teal to-cyan-light"
                         style={{ width: `${qual.avgQuality * 100}%` }}
                       />
                     </div>
@@ -237,7 +261,7 @@ export default function LearningDashboard() {
                         <div className="font-semibold text-slate-900 capitalize">{strat.strategy}</div>
                         <div className="text-xs text-slate-500">{strat.totalDecisions} decisions</div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-3 gap-4 mb-3">
                         <div>
                           <div className="text-xs text-slate-500">Quality</div>
                           <div className="text-lg font-bold text-teal">
@@ -257,12 +281,175 @@ export default function LearningDashboard() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Feedback Breakdown */}
+                      {strat.feedbackBreakdown && strat.feedbackBreakdown.total > 0 && (
+                        <div className="mt-4 pt-3 border-t border-slate-200">
+                          <div className="text-xs font-semibold text-slate-700 mb-2">User Feedback</div>
+                          <div className="flex gap-2 mb-2">
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-green-600">
+                                {strat.feedbackBreakdown.positive}
+                              </div>
+                              <div className="text-xs text-slate-500">👍 Helpful</div>
+                            </div>
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-red-600">
+                                {strat.feedbackBreakdown.negative}
+                              </div>
+                              <div className="text-xs text-slate-500">👎 Not Helpful</div>
+                            </div>
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-slate-400">
+                                {strat.feedbackBreakdown.neutral}
+                              </div>
+                              <div className="text-xs text-slate-500">No Feedback</div>
+                            </div>
+                          </div>
+
+                          {/* Satisfaction Trend Mini Chart */}
+                          {strat.feedbackBreakdown.satisfactionTrend.length > 0 && (
+                            <div className="mt-3">
+                              <div className="text-xs text-slate-500 mb-1">Last 10 Responses</div>
+                              <div className="flex gap-1 h-6">
+                                {strat.feedbackBreakdown.satisfactionTrend.map((score, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex-1 rounded-sm transition-all"
+                                    style={{
+                                      backgroundColor:
+                                        score >= 0.9 ? '#10b981' :  // green
+                                        score <= 0.2 ? '#ef4444' :  // red
+                                        '#94a3b8',  // slate
+                                      opacity: 0.6 + (score * 0.4)
+                                    }}
+                                    title={`${(score * 100).toFixed(0)}%`}
+                                  />
+                                ))}
+                              </div>
+                              <div className="flex justify-between text-xs text-slate-400 mt-1">
+                                <span>Older</span>
+                                <span>Recent</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
               </div>
             ) : (
               <div className="text-center text-slate-400 py-8">
                 No strategy data yet. Enable adaptive mode to start tracking performance.
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'modes' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Interaction Mode Performance</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Track how well each mode (Auto, Learning, Code Review, Expert) performs based on your feedback.
+            </p>
+            {data.modes && data.modes.length > 0 ? (
+              <div className="grid gap-3">
+                {data.modes.map((mode, i) => {
+                  const modeNames: Record<string, string> = {
+                    'auto': '🤖 Auto Mode',
+                    'learning': '🎓 Learning Mode',
+                    'code-review': '👁️ Code Review Mode',
+                    'expert': '🧠 Expert Mode'
+                  };
+                  const modeName = modeNames[mode.mode] || mode.mode;
+
+                  return (
+                    <div key={i} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="font-semibold text-slate-900">{modeName}</div>
+                        <div className="text-xs text-slate-500">{mode.totalInteractions} interactions</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mb-3">
+                        <div>
+                          <div className="text-xs text-slate-500">Quality</div>
+                          <div className="text-lg font-bold text-teal">
+                            {(mode.averageQuality * 100).toFixed(0)}%
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500">Success</div>
+                          <div className="text-lg font-bold text-cyan-light">
+                            {(mode.successRate * 100).toFixed(0)}%
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500">Satisfaction</div>
+                          <div className="text-lg font-bold text-yellow">
+                            {(mode.userSatisfaction * 100).toFixed(0)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Feedback Breakdown */}
+                      {mode.feedbackBreakdown && mode.feedbackBreakdown.total > 0 && (
+                        <div className="mt-4 pt-3 border-t border-slate-200">
+                          <div className="text-xs font-semibold text-slate-700 mb-2">User Feedback</div>
+                          <div className="flex gap-2 mb-2">
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-green-600">
+                                {mode.feedbackBreakdown.positive}
+                              </div>
+                              <div className="text-xs text-slate-500">👍 Helpful</div>
+                            </div>
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-red-600">
+                                {mode.feedbackBreakdown.negative}
+                              </div>
+                              <div className="text-xs text-slate-500">👎 Not Helpful</div>
+                            </div>
+                            <div className="flex-1 text-center">
+                              <div className="text-lg font-bold text-slate-400">
+                                {mode.feedbackBreakdown.neutral}
+                              </div>
+                              <div className="text-xs text-slate-500">No Feedback</div>
+                            </div>
+                          </div>
+
+                          {/* Satisfaction Trend Mini Chart */}
+                          {mode.feedbackBreakdown.satisfactionTrend.length > 0 && (
+                            <div className="mt-3">
+                              <div className="text-xs text-slate-500 mb-1">Last 10 Interactions</div>
+                              <div className="flex gap-1 h-6">
+                                {mode.feedbackBreakdown.satisfactionTrend.map((score, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex-1 rounded-sm transition-all"
+                                    style={{
+                                      backgroundColor:
+                                        score >= 0.9 ? '#10b981' :
+                                        score <= 0.2 ? '#ef4444' :
+                                        '#94a3b8',
+                                      opacity: 0.6 + (score * 0.4)
+                                    }}
+                                    title={`${(score * 100).toFixed(0)}%`}
+                                  />
+                                ))}
+                              </div>
+                              <div className="flex justify-between text-xs text-slate-400 mt-1">
+                                <span>Older</span>
+                                <span>Recent</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center text-slate-400 py-8">
+                No mode data yet. Start using different modes (Learning, Code Review, Expert) to see performance metrics!
               </div>
             )}
           </div>
