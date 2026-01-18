@@ -1,5 +1,6 @@
 // components/LeftToolbar.tsx
 'use client';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive' | 'workflow';
@@ -11,47 +12,87 @@ interface ModelOption {
   speed: string;
 }
 
-interface LeftToolbarProps {
+export interface ToolbarSettings {
   manualMode: '' | 'learning' | 'code-review' | 'expert';
   selectedStrategy: StrategyType;
   workflowMode: WorkflowMode;
   model: string;
-  models: ModelOption[];
-  autoSelectedModel: string;
   enableTools: boolean;
   voiceEnabled: boolean;
   strategyEnabled: boolean;
   memoryConsent: boolean;
-  onModeChange: (mode: '' | 'learning' | 'code-review' | 'expert') => void;
-  onStrategyChange: (strategy: StrategyType) => void;
-  onWorkflowModeChange: (mode: WorkflowMode) => void;
-  onModelChange: (model: string) => void;
-  onMemoryConsentToggle: () => void;
-  onToolsToggle: () => void;
-  onVoiceToggle: () => void;
-  onStrategyToggle: (enabled: boolean) => void;
+}
+
+interface LeftToolbarProps {
+  models: ModelOption[];
+  autoSelectedModel: string;
+  onSettingsChange: (settings: ToolbarSettings) => void;
 }
 
 export default function LeftToolbar({
-  manualMode,
-  selectedStrategy,
-  workflowMode,
-  model,
   models,
   autoSelectedModel,
-  enableTools,
-  voiceEnabled,
-  strategyEnabled,
-  memoryConsent,
-  onModeChange,
-  onStrategyChange,
-  onWorkflowModeChange,
-  onModelChange,
-  onMemoryConsentToggle,
-  onToolsToggle,
-  onVoiceToggle,
-  onStrategyToggle,
+  onSettingsChange,
 }: LeftToolbarProps) {
+  // LeftToolbar owns all settings state
+  const [settings, setSettings] = useState<ToolbarSettings>({
+    manualMode: '',
+    selectedStrategy: 'balanced',
+    workflowMode: 'auto',
+    model: 'qwen2.5-coder:7b-instruct-q5_K_M',
+    enableTools: false,
+    voiceEnabled: false,
+    strategyEnabled: false,
+    memoryConsent: false,
+  });
+
+  // Load memory consent preference on mount
+  useEffect(() => {
+    const loadConsent = async () => {
+      try {
+        const response = await fetch('/api/memory/consent');
+        if (!response.ok) return;
+        const data = await response.json();
+        setSettings(prev => ({ ...prev, memoryConsent: Boolean(data?.consent) }));
+      } catch (error) {
+        console.warn('[LeftToolbar] Failed to load memory consent:', error);
+      }
+    };
+    loadConsent();
+  }, []);
+
+  // Notify Chat whenever settings change
+  useEffect(() => {
+    onSettingsChange(settings);
+  }, [settings, onSettingsChange]);
+
+  // Update individual settings
+  const updateSetting = <K extends keyof ToolbarSettings>(
+    key: K,
+    value: ToolbarSettings[K]
+  ) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Handle memory consent toggle with API call
+  const handleMemoryConsentToggle = async () => {
+    const next = !settings.memoryConsent;
+    updateSetting('memoryConsent', next);
+    try {
+      const response = await fetch('/api/memory/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consent: next }),
+      });
+      if (!response.ok) {
+        updateSetting('memoryConsent', !next); // Revert on error
+      }
+    } catch (error) {
+      console.warn('[LeftToolbar] Failed to update memory consent:', error);
+      updateSetting('memoryConsent', !next); // Revert on error
+    }
+  };
+
   const toggleStyle =
     'flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 shadow-sm hover:shadow-md active:scale-95';
 
@@ -66,11 +107,9 @@ export default function LeftToolbar({
 
           <div className="mt-4 flex flex-col gap-3">
             <select
-              value={manualMode}
+              value={settings.manualMode}
               onChange={(e) =>
-                onModeChange(
-                  e.target.value as '' | 'learning' | 'code-review' | 'expert'
-                )
+                updateSetting('manualMode', e.target.value as '' | 'learning' | 'code-review' | 'expert')
               }
               className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-slate-900/40 hover:bg-white hover:border-slate-900/70 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-900/60 cursor-pointer shadow-sm hover:shadow-md"
               title="Mode: Auto-detect or select learning, code review, or expert mode"
@@ -94,12 +133,12 @@ export default function LeftToolbar({
                 Model
               </div>
               <select
-                value={model}
-                onChange={(e) => onModelChange(e.target.value)}
-                disabled={strategyEnabled}
+                value={settings.model}
+                onChange={(e) => updateSetting('model', e.target.value)}
+                disabled={settings.strategyEnabled}
                 className="mt-2 w-full px-3 py-2 rounded-xl text-xs font-bold bg-white/80 text-slate-900 border-2 border-slate-900/40 hover:bg-white hover:border-slate-900/70 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-900/60 cursor-pointer shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 title={
-                  strategyEnabled
+                  settings.strategyEnabled
                     ? 'Model selection disabled when Strategy is enabled'
                     : 'Select the AI model to use'
                 }
@@ -110,7 +149,7 @@ export default function LeftToolbar({
                   </option>
                 ))}
               </select>
-              {strategyEnabled && autoSelectedModel && (
+              {settings.strategyEnabled && autoSelectedModel && (
                 <div
                   className="mt-2 text-[11px] font-bold text-slate-800 bg-white/70 px-2.5 py-1.5 rounded-lg border border-slate-900/30 text-center"
                   title="Model automatically selected by strategy"
@@ -129,22 +168,22 @@ export default function LeftToolbar({
             </Link>
 
             <button
-              onClick={() => onStrategyToggle(!strategyEnabled)}
+              onClick={() => updateSetting('strategyEnabled', !settings.strategyEnabled)}
               className={`${toggleStyle} ${
-                strategyEnabled
+                settings.strategyEnabled
                   ? 'bg-linear-to-r from-yellow/80 to-peach/80 text-slate-900 border-slate-900/70'
                   : 'bg-white/60 text-slate-900 border-slate-900/40 hover:border-slate-900/70'
               }`}
               title="Toggle adaptive strategy"
             >
-              ⚡ Strategy {strategyEnabled ? 'ON' : 'OFF'}
+              ⚡ Strategy {settings.strategyEnabled ? 'ON' : 'OFF'}
             </button>
 
-            {strategyEnabled && (
+            {settings.strategyEnabled && (
               <>
                 <select
-                  value={selectedStrategy}
-                  onChange={(e) => onStrategyChange(e.target.value as StrategyType)}
+                  value={settings.selectedStrategy}
+                  onChange={(e) => updateSetting('selectedStrategy', e.target.value as StrategyType)}
                   className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-slate-900/40 hover:bg-white hover:border-slate-900/70 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-900/60 cursor-pointer shadow-sm hover:shadow-md"
                   title="Select optimization strategy"
                 >
@@ -168,10 +207,10 @@ export default function LeftToolbar({
                   </option>
                 </select>
 
-                {selectedStrategy === 'workflow' && (
+                {settings.selectedStrategy === 'workflow' && (
                   <select
-                    value={workflowMode}
-                    onChange={(e) => onWorkflowModeChange(e.target.value as WorkflowMode)}
+                    value={settings.workflowMode}
+                    onChange={(e) => updateSetting('workflowMode', e.target.value as WorkflowMode)}
                     className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-purple-600/40 hover:bg-white hover:border-purple-600/70 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-600/50 cursor-pointer shadow-sm hover:shadow-md"
                     title="Select workflow mode"
                   >
@@ -190,39 +229,39 @@ export default function LeftToolbar({
             )}
 
             <button
-              onClick={onToolsToggle}
+              onClick={() => updateSetting('enableTools', !settings.enableTools)}
               className={`${toggleStyle} ${
-                enableTools
+                settings.enableTools
                   ? 'bg-linear-to-r from-yellow/80 to-peach/80 text-slate-900 border-slate-900/70'
                   : 'bg-white/60 text-slate-900 border-slate-900/40 hover:border-slate-900/70'
               }`}
               title="Toggle tools"
             >
-              🛠️ Tools {enableTools ? 'ON' : 'OFF'}
+              🛠️ Tools {settings.enableTools ? 'ON' : 'OFF'}
             </button>
 
             <button
-              onClick={onMemoryConsentToggle}
+              onClick={handleMemoryConsentToggle}
               className={`${toggleStyle} ${
-                memoryConsent
+                settings.memoryConsent
                   ? 'bg-linear-to-r from-cyan-light/80 to-teal/80 text-slate-900 border-slate-900/70'
                   : 'bg-white/60 text-slate-900 border-slate-900/40 hover:border-slate-900/70'
               }`}
               title="Allow long-term memory profile usage"
             >
-              🧠 Memory {memoryConsent ? 'ON' : 'OFF'}
+              🧠 Memory {settings.memoryConsent ? 'ON' : 'OFF'}
             </button>
 
             <button
-              onClick={onVoiceToggle}
+              onClick={() => updateSetting('voiceEnabled', !settings.voiceEnabled)}
               className={`${toggleStyle} ${
-                voiceEnabled
+                settings.voiceEnabled
                   ? 'bg-linear-to-r from-red-500/90 to-pink-500/90 text-white border-slate-900/70'
                   : 'bg-white/60 text-slate-900 border-slate-900/40 hover:border-slate-900/70'
               }`}
               title="Toggle voice"
             >
-              🎙️ Voice {voiceEnabled ? 'ON' : 'OFF'}
+              🎙️ Voice {settings.voiceEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
 
@@ -235,11 +274,9 @@ export default function LeftToolbar({
       {/* Mobile: Compact Toolbar Row */}
       <div className="md:hidden flex gap-2 flex-wrap">
         <select
-          value={manualMode}
+          value={settings.manualMode}
           onChange={(e) =>
-            onModeChange(
-              e.target.value as '' | 'learning' | 'code-review' | 'expert'
-            )
+            updateSetting('manualMode', e.target.value as '' | 'learning' | 'code-review' | 'expert')
           }
           className="px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-slate-900/40 shadow-sm"
         >
@@ -249,9 +286,9 @@ export default function LeftToolbar({
           <option value="expert">🧠 Expert</option>
         </select>
         <select
-          value={model}
-          onChange={(e) => onModelChange(e.target.value)}
-          disabled={strategyEnabled}
+          value={settings.model}
+          onChange={(e) => updateSetting('model', e.target.value)}
+          disabled={settings.strategyEnabled}
           className="px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-slate-900/40 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {models.map((m) => (
@@ -267,20 +304,20 @@ export default function LeftToolbar({
           📊 Analytics
         </Link>
         <button
-          onClick={() => onStrategyToggle(!strategyEnabled)}
+          onClick={() => updateSetting('strategyEnabled', !settings.strategyEnabled)}
           className={`${toggleStyle} ${
-            strategyEnabled
+            settings.strategyEnabled
               ? 'bg-linear-to-r from-yellow/80 to-peach/80 text-slate-900 border-slate-900/70'
               : 'bg-white/60 text-slate-900 border-slate-900/40'
           }`}
         >
           ⚡ Strategy
         </button>
-        {strategyEnabled && (
+        {settings.strategyEnabled && (
           <>
             <select
-              value={selectedStrategy}
-              onChange={(e) => onStrategyChange(e.target.value as StrategyType)}
+              value={settings.selectedStrategy}
+              onChange={(e) => updateSetting('selectedStrategy', e.target.value as StrategyType)}
               className="px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-slate-900/40 shadow-sm"
             >
               <option value="balanced">⚖️ Balanced</option>
@@ -290,10 +327,10 @@ export default function LeftToolbar({
               <option value="adaptive">🤖 Adaptive ML</option>
               <option value="workflow">🔗 Workflow</option>
             </select>
-            {selectedStrategy === 'workflow' && (
+            {settings.selectedStrategy === 'workflow' && (
               <select
-                value={workflowMode}
-                onChange={(e) => onWorkflowModeChange(e.target.value as WorkflowMode)}
+                value={settings.workflowMode}
+                onChange={(e) => updateSetting('workflowMode', e.target.value as WorkflowMode)}
                 className="px-3 py-2 rounded-xl text-xs font-bold bg-white/70 text-slate-900 border-2 border-purple-600/40 shadow-sm"
               >
                 <option value="auto">🎯 Auto</option>
@@ -304,9 +341,9 @@ export default function LeftToolbar({
           </>
         )}
         <button
-          onClick={onToolsToggle}
+          onClick={() => updateSetting('enableTools', !settings.enableTools)}
           className={`${toggleStyle} ${
-            enableTools
+            settings.enableTools
               ? 'bg-linear-to-r from-yellow/80 to-peach/80 text-slate-900 border-slate-900/70'
               : 'bg-white/60 text-slate-900 border-slate-900/40'
           }`}
@@ -314,9 +351,9 @@ export default function LeftToolbar({
           🛠️ Tools
         </button>
         <button
-          onClick={onMemoryConsentToggle}
+          onClick={handleMemoryConsentToggle}
           className={`${toggleStyle} ${
-            memoryConsent
+            settings.memoryConsent
               ? 'bg-linear-to-r from-cyan-light/80 to-teal/80 text-slate-900 border-slate-900/70'
               : 'bg-white/60 text-slate-900 border-slate-900/40'
           }`}
@@ -324,9 +361,9 @@ export default function LeftToolbar({
           🧠 Memory
         </button>
         <button
-          onClick={onVoiceToggle}
+          onClick={() => updateSetting('voiceEnabled', !settings.voiceEnabled)}
           className={`${toggleStyle} ${
-            voiceEnabled
+            settings.voiceEnabled
               ? 'bg-linear-to-r from-red-500/90 to-pink-500/90 text-white border-slate-900/70'
               : 'bg-white/60 text-slate-900 border-slate-900/40'
           }`}

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import ParticleOrb from './ParticleOrb';
 import TopNav from './TopNav';
-import LeftToolbar from './LeftToolbar';
+import LeftToolbar, { ToolbarSettings } from './LeftToolbar';
 import { useVoiceFlow } from '@/app/lib/voice/useVoiceFlow';
 
 interface Message {
@@ -26,23 +26,24 @@ interface Message {
   };
 }
 
-type StrategyType = 'balanced' | 'speed' | 'quality' | 'cost' | 'adaptive' | 'workflow';
-type WorkflowMode = 'auto' | 'chain' | 'ensemble';
-
 export default function Chat() {
-  // State Management
-  const [model, setModel] = useState('qwen2.5-coder:7b-instruct-q5_K_M');
+  // State Management - Chat owns conversation state
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [enableTools, setEnableTools] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [manualMode, setManualMode] = useState<'' | 'learning' | 'code-review' | 'expert'>('');
-  const [strategyEnabled, setStrategyEnabled] = useState(false);
-  const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('balanced');
-  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('auto');
   const [autoSelectedModel, setAutoSelectedModel] = useState<string>('');
-  const [memoryConsent, setMemoryConsent] = useState(false);
+
+  // Settings come from LeftToolbar
+  const [currentSettings, setCurrentSettings] = useState<ToolbarSettings>({
+    manualMode: '',
+    selectedStrategy: 'balanced',
+    workflowMode: 'auto',
+    model: 'qwen2.5-coder:7b-instruct-q5_K_M',
+    enableTools: false,
+    voiceEnabled: false,
+    strategyEnabled: false,
+    memoryConsent: false,
+  });
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,14 +107,14 @@ export default function Chat() {
 
   // Handle voice toggle
   useEffect(() => {
-    if (voiceEnabled) {
+    if (currentSettings.voiceEnabled) {
       console.log('[Chat] Voice enabled - starting listening');
       voiceRef.current.startListening();
     } else {
       console.log('[Chat] Voice disabled - stopping');
       voiceRef.current.stopListening();
     }
-  }, [voiceEnabled]);
+  }, [currentSettings.voiceEnabled]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -123,20 +124,7 @@ export default function Chat() {
     };
   }, []);
 
-  // Load memory consent preference (local only)
-  useEffect(() => {
-    const loadConsent = async () => {
-      try {
-        const response = await fetch('/api/memory/consent');
-        if (!response.ok) return;
-        const data = await response.json();
-        setMemoryConsent(Boolean(data?.consent));
-      } catch (error) {
-        console.warn('[Chat] Failed to load memory consent:', error);
-      }
-    };
-    loadConsent();
-  }, []);
+  // Memory consent is now handled by LeftToolbar
 
   /**
    * Strip markdown formatting for TTS (so it sounds natural when spoken)
@@ -184,27 +172,27 @@ export default function Chat() {
 
     try {
       // Notify voice system that LLM is thinking
-      if (voiceEnabled) {
+      if (currentSettings.voiceEnabled) {
         voice.setThinking();
       }
 
       // Send to LLM API
       // Workflow doesn't support streaming, so force stream: false when workflow is selected
-      const isWorkflow = strategyEnabled && selectedStrategy === 'workflow';
-      const shouldStream = !enableTools && !isWorkflow;
+      const isWorkflow = currentSettings.strategyEnabled && currentSettings.selectedStrategy === 'workflow';
+      const shouldStream = !currentSettings.enableTools && !isWorkflow;
 
       const response = await fetch('/api/llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,
+          model: currentSettings.model,
           messages: [...messages, userMsg],
           stream: shouldStream,
-          enableTools,
-          manualModeOverride: manualMode || undefined,
-          strategyEnabled,
-          selectedStrategy: strategyEnabled ? selectedStrategy : undefined,
-          workflowMode: selectedStrategy === 'workflow' ? workflowMode : undefined
+          enableTools: currentSettings.enableTools,
+          manualModeOverride: currentSettings.manualMode || undefined,
+          strategyEnabled: currentSettings.strategyEnabled,
+          selectedStrategy: currentSettings.strategyEnabled ? currentSettings.selectedStrategy : undefined,
+          workflowMode: currentSettings.selectedStrategy === 'workflow' ? currentSettings.workflowMode : undefined
         })
       });
 
@@ -229,23 +217,23 @@ export default function Chat() {
             complexity: data.metadata?.complexityScore,
             temperature: data.metadata?.temperature,
             maxTokens: data.metadata?.maxTokens,
-            toolsEnabled: enableTools,
-            modelUsed: data.autoSelectedModel || model,
+            toolsEnabled: currentSettings.enableTools,
+            modelUsed: data.autoSelectedModel || currentSettings.model,
             responseTime,
             tokensUsed: Math.floor(content.length / 4), // Rough estimate
-            mode: manualMode || 'auto' // Track which mode was used
+            mode: currentSettings.manualMode || 'auto' // Track which mode was used
           }
         };
 
         setMessages(prev => [...prev, aiMsg]);
 
         // Update auto-selected model if strategy is enabled
-        if (strategyEnabled && data.autoSelectedModel) {
+        if (currentSettings.strategyEnabled && data.autoSelectedModel) {
           setAutoSelectedModel(data.autoSelectedModel);
         }
 
         // Speak response if voice enabled (strip markdown for natural speech)
-        if (voiceEnabled && content) {
+        if (currentSettings.voiceEnabled && content) {
           const cleanedContent = stripMarkdownForSpeech(content);
           await voice.speakResponse(cleanedContent, true); // true = auto-resume after speaking
         }
@@ -286,11 +274,11 @@ export default function Chat() {
                         complexity: parsed.complexity,
                         temperature: parsed.temperature,
                         maxTokens: parsed.maxTokens,
-                        toolsEnabled: enableTools,
-                        modelUsed: parsed.modelUsed || model,
+                        toolsEnabled: currentSettings.enableTools,
+                        modelUsed: parsed.modelUsed || currentSettings.model,
                         responseTime: 0,
                         tokensUsed: 0,
-                        mode: manualMode || 'auto'
+                        mode: currentSettings.manualMode || 'auto'
                       };
                       continue; // Skip rendering this metadata chunk
                     }
@@ -321,10 +309,10 @@ export default function Chat() {
                     ...msg,
                     decisionId: finalDecisionId,
                     learningContext: streamLearningContext || {
-                      modelUsed: model,
+                      modelUsed: currentSettings.model,
                       responseTime,
                       tokensUsed: Math.floor(fullContent.length / 4),
-                      mode: manualMode || 'auto'
+                      mode: currentSettings.manualMode || 'auto'
                     }
                   }
                 : msg
@@ -334,7 +322,7 @@ export default function Chat() {
           }
 
           // Speak full response if voice enabled (strip markdown for natural speech)
-          if (voiceEnabled && fullContent) {
+          if (currentSettings.voiceEnabled && fullContent) {
             const cleanedContent = stripMarkdownForSpeech(fullContent);
             await voice.speakResponse(cleanedContent, true); // true = auto-resume after speaking
           }
@@ -351,24 +339,6 @@ export default function Chat() {
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleMemoryConsentToggle = async () => {
-    const next = !memoryConsent;
-    setMemoryConsent(next);
-    try {
-      const response = await fetch('/api/memory/consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consent: next }),
-      });
-      if (!response.ok) {
-        setMemoryConsent(!next);
-      }
-    } catch (error) {
-      console.warn('[Chat] Failed to update memory consent:', error);
-      setMemoryConsent(!next);
     }
   };
 
@@ -427,24 +397,9 @@ export default function Chat() {
         <div className="max-w-6xl mx-auto flex flex-col gap-4 h-full overflow-hidden">
           <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
             <LeftToolbar
-              manualMode={manualMode}
-              selectedStrategy={selectedStrategy}
-              workflowMode={workflowMode}
-              model={model}
               models={models}
               autoSelectedModel={autoSelectedModel}
-              enableTools={enableTools}
-              voiceEnabled={voiceEnabled}
-              strategyEnabled={strategyEnabled}
-              memoryConsent={memoryConsent}
-              onModeChange={setManualMode}
-              onStrategyChange={setSelectedStrategy}
-              onWorkflowModeChange={setWorkflowMode}
-              onModelChange={setModel}
-              onMemoryConsentToggle={handleMemoryConsentToggle}
-              onToolsToggle={() => setEnableTools(!enableTools)}
-              onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
-              onStrategyToggle={(enabled) => setStrategyEnabled(enabled)}
+              onSettingsChange={setCurrentSettings}
             />
             <div className="flex-1 flex flex-col gap-6 min-h-0">
 
@@ -562,7 +517,7 @@ export default function Chat() {
                             <div className="w-2.5 h-2.5 bg-yellow rounded-full animate-bounce [animation-delay:0.2s]" />
                           </div>
                           <span className="text-xs font-medium text-slate-600 ml-1">
-                            {voiceEnabled ? 'Listening...' : 'Thinking...'} ({model.split(':')[0]})
+                            {currentSettings.voiceEnabled ? 'Listening...' : 'Thinking...'} ({currentSettings.model.split(':')[0]})
                           </span>
                         </div>
                       </div>
@@ -579,17 +534,17 @@ export default function Chat() {
           </div>
 
           {/* Input Area - Voice or Text Mode */}
-          {voiceEnabled ? (
+          {currentSettings.voiceEnabled ? (
             // Voice Mode - Seamless Conversation Loop
             <div className="flex flex-col items-center gap-6 py-6">
               <ParticleOrb
                 state={voice.state === 'auto-resuming' ? 'listening' : (voice.state as any)}
                 audioLevel={voice.audioLevel}
                 beat={voice.audioFrequency.beat}
-                disabled={isLoading || !voiceEnabled}
+                disabled={isLoading || !currentSettings.voiceEnabled}
                 onClick={() => {
-                  // Toggle voice on/off via the orb
-                  setVoiceEnabled(!voiceEnabled);
+                  // Toggle voice on/off via the orb - update via LeftToolbar settings
+                  setCurrentSettings(prev => ({ ...prev, voiceEnabled: !prev.voiceEnabled }));
                 }}
               />
 
@@ -632,15 +587,15 @@ export default function Chat() {
 
           {/* Footer - Status Info */}
           <div className="text-xs text-slate-500 text-center pt-4 border-t border-cyan-light/20 font-medium tracking-widest">
-            🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages
-            {manualMode && ` • ${
-              manualMode === 'learning'
+            🔒 Offline • M4 Optimized • {currentSettings.model.split(':')[0]} • {messages.length} messages
+            {currentSettings.manualMode && ` • ${
+              currentSettings.manualMode === 'learning'
                 ? '🎓'
-                : manualMode === 'code-review'
+                : currentSettings.manualMode === 'code-review'
                 ? '👁️'
                 : '🧠'
-            } ${manualMode}`}
-            {voiceEnabled && ' • 🎤 Voice Active'}
+            } ${currentSettings.manualMode}`}
+            {currentSettings.voiceEnabled && ' • 🎤 Voice Active'}
           </div>
         </div>
       </div>
