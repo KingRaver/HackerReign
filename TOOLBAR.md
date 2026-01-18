@@ -46,6 +46,9 @@ The left toolbar consolidates controls that previously lived in the top nav. It�
   - Controls long-term profile usage. This is privacy-sensitive and requires explicit consent.
   - OFF clears the stored profile and its embeddings.
 
+- **Analytics Link**
+  - Opens the analytics dashboard showing conversation metrics, token usage, and model performance.
+
 ## Memory Features (Detailed)
 
 Memory is split into two layers:
@@ -120,5 +123,33 @@ Conversation summaries are designed for hierarchical memory:
 - Consent API lives in `app/api/memory/consent/route.ts`.
 - Memory management in `app/lib/memory/index.ts`.
 - RAG retrieval in `app/lib/memory/rag`.
+- Database migrations in `app/lib/memory/migrations/`.
 
-If you want help wiring additional privacy controls (e.g., “forget this conversation”), say the word.
+## Planned Enhancements
+
+The following features are planned for the memory system (see `CONTEXT.MD` for full implementation plan):
+
+### 1. Hybrid Retrieval (RAG_HYBRID)
+- Combines dense (semantic) and lexical (BM25/FTS) search
+- Improves recall for exact code identifiers and file names
+- Reranks results using weighted scoring
+
+### 2. Smart Chunking (RAG_CHUNKING)
+- Splits long messages into code blocks and prose sections
+- Prevents context truncation for long messages
+- Prioritizes code chunks for code-heavy queries
+
+### 3. Automatic Summaries
+- Generates conversation summaries every N messages
+- Distills key decisions and preferences
+- Reduces token noise in retrieval
+
+### 4. Advanced Settings UI
+- Token budget configuration (default: 1000 tokens)
+- Summary frequency control
+- Hybrid search and chunking toggles
+- Will appear in LeftToolbar after validation
+
+All enhancements are feature-flagged and can be enabled via environment variables without breaking existing functionality.
+
+If you want help wiring additional privacy controls (e.g., "forget this conversation"), say the word.
