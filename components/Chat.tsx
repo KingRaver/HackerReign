@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import ParticleOrb from './ParticleOrb';
 import TopNav from './TopNav';
+import LeftToolbar from './LeftToolbar';
 import { useVoiceFlow } from '@/app/lib/voice/useVoiceFlow';
 
 interface Message {
@@ -41,10 +42,13 @@ export default function Chat() {
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('balanced');
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('auto');
   const [autoSelectedModel, setAutoSelectedModel] = useState<string>('');
+  const [memoryConsent, setMemoryConsent] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const userHasScrolledUp = useRef(false);
 
   // Models Configuration
   const models = [
@@ -72,9 +76,21 @@ export default function Chat() {
     }
   });
 
-  // Auto-scroll to bottom of messages
+  // Auto-scroll to bottom of messages (only if user hasn't scrolled up)
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!userHasScrolledUp.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
+  // Detect when user scrolls up manually
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if user is scrolled to bottom (within 50px threshold)
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+    userHasScrolledUp.current = !isAtBottom;
   }, []);
 
   useEffect(() => {
@@ -105,6 +121,21 @@ export default function Chat() {
       console.log('[Chat] Cleanup - stopping voice');
       voiceRef.current.stopListening();
     };
+  }, []);
+
+  // Load memory consent preference (local only)
+  useEffect(() => {
+    const loadConsent = async () => {
+      try {
+        const response = await fetch('/api/memory/consent');
+        if (!response.ok) return;
+        const data = await response.json();
+        setMemoryConsent(Boolean(data?.consent));
+      } catch (error) {
+        console.warn('[Chat] Failed to load memory consent:', error);
+      }
+    };
+    loadConsent();
   }, []);
 
   /**
@@ -147,6 +178,9 @@ export default function Chat() {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+
+    // Reset scroll flag so auto-scroll resumes for new messages
+    userHasScrolledUp.current = false;
 
     try {
       // Notify voice system that LLM is thinking
@@ -320,6 +354,24 @@ export default function Chat() {
     }
   };
 
+  const handleMemoryConsentToggle = async () => {
+    const next = !memoryConsent;
+    setMemoryConsent(next);
+    try {
+      const response = await fetch('/api/memory/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consent: next }),
+      });
+      if (!response.ok) {
+        setMemoryConsent(!next);
+      }
+    } catch (error) {
+      console.warn('[Chat] Failed to update memory consent:', error);
+      setMemoryConsent(!next);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -367,123 +419,133 @@ export default function Chat() {
     <>
       {/* Sticky Top Navigation */}
       <TopNav
-        model={model}
-        manualMode={manualMode}
-        strategyEnabled={strategyEnabled}
-        selectedStrategy={selectedStrategy}
-        workflowMode={workflowMode}
-        enableTools={enableTools}
-        voiceEnabled={voiceEnabled}
-        autoSelectedModel={autoSelectedModel}
         messageCount={messages.length}
-        onModelChange={setModel}
-        onModeChange={setManualMode}
-        onStrategyToggle={setStrategyEnabled}
-        onStrategyChange={setSelectedStrategy}
-        onWorkflowModeChange={setWorkflowMode}
-        onToolsToggle={() => setEnableTools(!enableTools)}
-        onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
-        models={models}
       />
 
       {/* Main Chat Container - Professional Light Background */}
-      <div className="pt-24 pb-8 px-8 min-h-screen bg-linear-to-br from-slate-50 via-cyan-50/30 to-slate-50">
-        <div className="max-w-4xl mx-auto flex flex-col gap-6 h-[calc(100vh-8rem)]">
-          
-          {/* Messages Container */}
-          <div className="flex-1 flex flex-col bg-linear-to-br from-orange-50/95 to-rose-50/85 backdrop-blur-lg rounded-3xl p-8 border border-orange-200/60 shadow-inner shadow-orange-100/40 overflow-hidden">
-            <div className="flex-1 overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-orange-400/60 scrollbar-track-transparent space-y-5">
-              {messages.length === 0 ? (
-                // Empty State
-                <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                  <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-cyan-light/30 to-teal/30 border-2 border-cyan-light/40 animate-pulse shadow-lg" />
-                  <p className="text-lg font-bold text-slate-500 tracking-tight">
-                    Select your AI specialist
-                  </p>
-                  <p className="text-xs mt-3 opacity-70 font-medium text-slate-400">
-                    Python • Next.js • Offline • Voice Ready
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {/* Message List */}
-                  {messages.map((msg: Message) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.role === 'user' ? 'justify-end' : 'justify-start'
-                      } animate-in slide-in-from-bottom-3 duration-300 ease-out`}
-                    >
-                      {msg.role === 'user' ? (
-                        // User Message - Right aligned with teal/cyan gradient
-                        <div className="max-w-2xl p-6 rounded-2xl shadow-lg border-2 border-teal/50 bg-linear-to-br from-teal/90 to-cyan-light/80 text-white hover:shadow-xl hover:shadow-teal/40 transition-all duration-200 hover:border-teal/70">
-                          <div className="prose prose-sm prose-invert max-w-none">
-                            <ReactMarkdown
-                              components={{
-                                p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm mb-2 last:mb-0">{children}</p>,
-                                code: ({children}) => <code className="text-cyan-light bg-white/20 px-1.5 py-0.5 rounded text-xs">{children}</code>,
-                                pre: ({children}) => <pre className="bg-slate-900/50 text-cyan-light p-3 rounded-lg overflow-x-auto text-xs my-2">{children}</pre>
-                              }}
-                            >
-                              {msg.content}
-                            </ReactMarkdown>
-                          </div>
-                        </div>
-                      ) : (
-                        // Assistant Message - Left aligned with slate background
-                        <div className="max-w-2xl">
-                          <div className="p-6 rounded-2xl shadow-md border-2 border-slate-200 bg-slate-100/80 text-slate-900 hover:shadow-lg hover:shadow-teal/20 transition-all duration-200 hover:bg-slate-100 hover:border-slate-300">
-                            <div className="prose prose-sm prose-slate max-w-none">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-normal text-slate-900 text-sm mb-2 last:mb-0">{children}</p>,
-                                  code: ({children}) => <code className="text-teal bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>,
-                                  pre: ({children}) => <pre className="bg-slate-800 text-white p-4 rounded-lg overflow-x-auto text-xs my-3 border-2 border-slate-300">{children}</pre>,
-                                  ul: ({children}) => <ul className="list-disc list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ul>,
-                                  ol: ({children}) => <ol className="list-decimal list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ol>,
-                                  li: ({children}) => <li className="text-slate-900">{children}</li>,
-                                  h1: ({children}) => <h1 className="text-lg font-bold text-slate-900 mt-3 mb-2">{children}</h1>,
-                                  h2: ({children}) => <h2 className="text-base font-bold text-slate-900 mt-2 mb-1">{children}</h2>,
-                                  h3: ({children}) => <h3 className="text-sm font-bold text-slate-900 mt-2 mb-1">{children}</h3>,
-                                  strong: ({children}) => <strong className="font-bold text-slate-900">{children}</strong>,
-                                  em: ({children}) => <em className="italic text-slate-700">{children}</em>,
-                                  a: ({children, href}) => <a href={href} className="text-teal hover:text-cyan-light underline" target="_blank" rel="noopener noreferrer">{children}</a>
-                                }}
-                              >
-                                {msg.content}
-                              </ReactMarkdown>
-                            </div>
-                          </div>
+      <div className="pt-16 pb-8 px-6 h-screen overflow-hidden bg-linear-to-br from-slate-50 via-cyan-50/30 to-slate-50">
+        <div className="max-w-6xl mx-auto flex flex-col gap-4 h-full overflow-hidden">
+          <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
+            <LeftToolbar
+              manualMode={manualMode}
+              selectedStrategy={selectedStrategy}
+              workflowMode={workflowMode}
+              model={model}
+              models={models}
+              autoSelectedModel={autoSelectedModel}
+              enableTools={enableTools}
+              voiceEnabled={voiceEnabled}
+              strategyEnabled={strategyEnabled}
+              memoryConsent={memoryConsent}
+              onModeChange={setManualMode}
+              onStrategyChange={setSelectedStrategy}
+              onWorkflowModeChange={setWorkflowMode}
+              onModelChange={setModel}
+              onMemoryConsentToggle={handleMemoryConsentToggle}
+              onToolsToggle={() => setEnableTools(!enableTools)}
+              onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
+              onStrategyToggle={(enabled) => setStrategyEnabled(enabled)}
+            />
+            <div className="flex-1 flex flex-col gap-6 min-h-0">
 
-                          {/* Feedback Buttons - Continuous Learning UI - Now available for ALL modes! */}
-                          {msg.decisionId && (
-                            <div className="flex gap-2 mt-2 ml-2">
-                              <button
-                                onClick={() => handleFeedback(msg.id, 'positive')}
-                                disabled={msg.feedback !== undefined}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                                  msg.feedback === 'positive'
-                                    ? 'bg-green-500 text-white shadow-md'
-                                    : 'bg-slate-200 text-slate-600 hover:bg-green-100 hover:text-green-700 disabled:opacity-40'
-                                }`}
-                                title="Good response - helps the AI learn"
-                              >
-                                👍 Helpful
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.id, 'negative')}
-                                disabled={msg.feedback !== undefined}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                                  msg.feedback === 'negative'
-                                    ? 'bg-red-500 text-white shadow-md'
-                                    : 'bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-700 disabled:opacity-40'
-                                }`}
-                                title="Poor response - helps the AI improve"
-                              >
-                                👎 Not Helpful
-                              </button>
+              {/* Messages Container */}
+              <div className="flex-1 flex flex-col bg-linear-to-br from-orange-50/95 to-rose-50/85 backdrop-blur-lg rounded-3xl p-8 border border-orange-200/60 shadow-inner shadow-orange-100/40 overflow-hidden min-h-0">
+                <div
+                  ref={messagesContainerRef}
+                  onScroll={handleScroll}
+                  className="flex-1 overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-orange-400/60 scrollbar-track-transparent space-y-5"
+                >
+                  {messages.length === 0 ? (
+                    // Empty State
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                      <div className="w-24 h-24 mb-6 rounded-2xl bg-linear-to-r from-cyan-light/30 to-teal/30 border-2 border-cyan-light/40 animate-pulse shadow-lg" />
+                      <p className="text-lg font-bold text-slate-500 tracking-tight">
+                        Select your AI specialist
+                      </p>
+                      <p className="text-xs mt-3 opacity-70 font-medium text-slate-400">
+                        Python • Next.js • Offline • Voice Ready
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Message List */}
+                      {messages.map((msg: Message) => (
+                        <div
+                          key={msg.id}
+                          className={`flex ${
+                            msg.role === 'user' ? 'justify-end' : 'justify-start'
+                          } animate-in slide-in-from-bottom-3 duration-300 ease-out`}
+                        >
+                          {msg.role === 'user' ? (
+                            // User Message - Right aligned with teal/cyan gradient
+                            <div className="max-w-2xl p-6 rounded-2xl shadow-lg border-2 border-teal/50 bg-linear-to-br from-teal/90 to-cyan-light/80 text-white hover:shadow-xl hover:shadow-teal/40 transition-all duration-200 hover:border-teal/70">
+                              <div className="prose prose-sm prose-invert max-w-none">
+                                <ReactMarkdown
+                                  components={{
+                                    p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-medium text-white text-sm mb-2 last:mb-0">{children}</p>,
+                                    code: ({children}) => <code className="text-cyan-light bg-white/20 px-1.5 py-0.5 rounded text-xs">{children}</code>,
+                                    pre: ({children}) => <pre className="bg-slate-900/50 text-cyan-light p-3 rounded-lg overflow-x-auto text-xs my-2">{children}</pre>
+                                  }}
+                                >
+                                  {msg.content}
+                                </ReactMarkdown>
+                              </div>
                             </div>
-                          )}
+                          ) : (
+                            // Assistant Message - Left aligned with slate background
+                            <div className="max-w-2xl">
+                              <div className="p-6 rounded-2xl shadow-md border-2 border-slate-200 bg-slate-100/80 text-slate-900 hover:shadow-lg hover:shadow-teal/20 transition-all duration-200 hover:bg-slate-100 hover:border-slate-300">
+                                <div className="prose prose-sm prose-slate max-w-none">
+                                  <ReactMarkdown
+                                    components={{
+                                      p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed font-normal text-slate-900 text-sm mb-2 last:mb-0">{children}</p>,
+                                      code: ({children}) => <code className="text-teal bg-slate-200 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                      pre: ({children}) => <pre className="bg-slate-800 text-white p-4 rounded-lg overflow-x-auto text-xs my-3 border-2 border-slate-300">{children}</pre>,
+                                      ul: ({children}) => <ul className="list-disc list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ul>,
+                                      ol: ({children}) => <ol className="list-decimal list-inside text-slate-900 text-sm space-y-1 my-2">{children}</ol>,
+                                      li: ({children}) => <li className="text-slate-900">{children}</li>,
+                                      h1: ({children}) => <h1 className="text-lg font-bold text-slate-900 mt-3 mb-2">{children}</h1>,
+                                      h2: ({children}) => <h2 className="text-base font-bold text-slate-900 mt-2 mb-1">{children}</h2>,
+                                      h3: ({children}) => <h3 className="text-sm font-bold text-slate-900 mt-2 mb-1">{children}</h3>,
+                                      strong: ({children}) => <strong className="font-bold text-slate-900">{children}</strong>,
+                                      em: ({children}) => <em className="italic text-slate-700">{children}</em>,
+                                      a: ({children, href}) => <a href={href} className="text-teal hover:text-cyan-light underline" target="_blank" rel="noopener noreferrer">{children}</a>
+                                    }}
+                                  >
+                                    {msg.content}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
+
+                              {/* Feedback Buttons - Continuous Learning UI - Now available for ALL modes! */}
+                              {msg.decisionId && (
+                                <div className="flex gap-2 mt-2 ml-2">
+                                  <button
+                                    onClick={() => handleFeedback(msg.id, 'positive')}
+                                    disabled={msg.feedback !== undefined}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                                      msg.feedback === 'positive'
+                                        ? 'bg-green-500 text-white shadow-md'
+                                        : 'bg-slate-200 text-slate-600 hover:bg-green-100 hover:text-green-700 disabled:opacity-40'
+                                    }`}
+                                    title="Good response - helps the AI learn"
+                                  >
+                                    👍 Helpful
+                                  </button>
+                                  <button
+                                    onClick={() => handleFeedback(msg.id, 'negative')}
+                                    disabled={msg.feedback !== undefined}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                                      msg.feedback === 'negative'
+                                        ? 'bg-red-500 text-white shadow-md'
+                                        : 'bg-slate-200 text-slate-600 hover:bg-red-100 hover:text-red-700 disabled:opacity-40'
+                                    }`}
+                                    title="Poor response - helps the AI improve"
+                                  >
+                                    👎 Not Helpful
+                                  </button>
+                                </div>
+                              )}
                         </div>
                       )}
                     </div>
@@ -511,6 +573,8 @@ export default function Chat() {
 
               {/* Scroll Anchor */}
               <div ref={messagesEndRef} />
+            </div>
+          </div>
             </div>
           </div>
 
@@ -568,12 +632,12 @@ export default function Chat() {
 
           {/* Footer - Status Info */}
           <div className="text-xs text-slate-500 text-center pt-4 border-t border-cyan-light/20 font-medium tracking-widest">
-            🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages 
+            🔒 Offline • M4 Optimized • {model.split(':')[0]} • {messages.length} messages
             {manualMode && ` • ${
-              manualMode === 'learning' 
-                ? '🎓' 
-                : manualMode === 'code-review' 
-                ? '👁️' 
+              manualMode === 'learning'
+                ? '🎓'
+                : manualMode === 'code-review'
+                ? '👁️'
                 : '🧠'
             } ${manualMode}`}
             {voiceEnabled && ' • 🎤 Voice Active'}

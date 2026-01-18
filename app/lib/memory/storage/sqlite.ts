@@ -10,6 +10,8 @@ import {
   UserPreference,
   EmbeddingMetadata,
   Session,
+  ConversationSummary,
+  UserProfile,
 } from '../schemas';
 
 /**
@@ -392,6 +394,152 @@ export class SQLiteStorage {
     });
 
     return result;
+  }
+
+  /**
+   * SUMMARY: Upsert conversation summary
+   */
+  saveConversationSummary(
+    conversationId: string,
+    summary: string,
+    contentHash?: string
+  ): ConversationSummary {
+    const now = new Date().toISOString();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO conversation_summaries (conversation_id, summary, updated_at, content_hash, embedding_status, error_message)
+      VALUES (?, ?, ?, ?, 'pending', NULL)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        summary = excluded.summary,
+        updated_at = excluded.updated_at,
+        content_hash = excluded.content_hash,
+        embedding_status = 'pending',
+        error_message = NULL
+    `);
+
+    stmt.run(conversationId, summary, now, contentHash || null);
+
+    // Keep conversations.summary in sync
+    const updateConversation = this.db.prepare(`
+      UPDATE conversations
+      SET summary = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    updateConversation.run(summary, now, conversationId);
+
+    return {
+      conversation_id: conversationId,
+      summary,
+      updated_at: now,
+      content_hash: contentHash,
+      embedding_status: 'pending',
+    };
+  }
+
+  /**
+   * SUMMARY: Get conversation summary
+   */
+  getConversationSummary(conversationId: string): ConversationSummary | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_summaries WHERE conversation_id = ?
+    `);
+    const row = stmt.get(conversationId) as any;
+    if (!row) return null;
+
+    return {
+      conversation_id: row.conversation_id,
+      summary: row.summary,
+      updated_at: row.updated_at,
+      content_hash: row.content_hash,
+      embedding_status: row.embedding_status,
+      error_message: row.error_message || undefined,
+    };
+  }
+
+  /**
+   * SUMMARY: Update summary embedding status
+   */
+  updateConversationSummaryEmbeddingStatus(
+    conversationId: string,
+    status: 'success' | 'failed',
+    errorMessage?: string
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE conversation_summaries
+      SET embedding_status = ?, error_message = ?
+      WHERE conversation_id = ?
+    `);
+    stmt.run(status, errorMessage || null, conversationId);
+  }
+
+  /**
+   * PROFILE: Upsert single-user profile
+   */
+  saveUserProfile(profile: string, contentHash?: string): UserProfile {
+    const now = new Date().toISOString();
+    const id = 'default';
+
+    const stmt = this.db.prepare(`
+      INSERT INTO user_profile (id, profile, updated_at, content_hash, embedding_status, error_message)
+      VALUES (?, ?, ?, ?, 'pending', NULL)
+      ON CONFLICT(id) DO UPDATE SET
+        profile = excluded.profile,
+        updated_at = excluded.updated_at,
+        content_hash = excluded.content_hash,
+        embedding_status = 'pending',
+        error_message = NULL
+    `);
+
+    stmt.run(id, profile, now, contentHash || null);
+
+    return {
+      id,
+      profile,
+      updated_at: now,
+      content_hash: contentHash,
+      embedding_status: 'pending',
+    };
+  }
+
+  /**
+   * PROFILE: Get single-user profile
+   */
+  getUserProfile(): UserProfile | null {
+    const stmt = this.db.prepare(`SELECT * FROM user_profile WHERE id = 'default'`);
+    const row = stmt.get() as any;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      profile: row.profile,
+      updated_at: row.updated_at,
+      content_hash: row.content_hash,
+      embedding_status: row.embedding_status,
+      error_message: row.error_message || undefined,
+    };
+  }
+
+  /**
+   * PROFILE: Update profile embedding status
+   */
+  updateUserProfileEmbeddingStatus(
+    status: 'success' | 'failed',
+    errorMessage?: string
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE user_profile
+      SET embedding_status = ?, error_message = ?
+      WHERE id = 'default'
+    `);
+    stmt.run(status, errorMessage || null);
+  }
+
+  /**
+   * PROFILE: Delete single-user profile
+   */
+  deleteUserProfile(): void {
+    const stmt = this.db.prepare(`DELETE FROM user_profile WHERE id = 'default'`);
+    stmt.run();
   }
 
   /**

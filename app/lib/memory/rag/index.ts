@@ -131,16 +131,48 @@ export class RAGManager {
    */
   async retrieveSimilarMessages(
     query: string,
-    topK?: number
+    topK?: number,
+    conversationId?: string,
+    includeProfile: boolean = false
   ): Promise<RetrievalResult[]> {
     try {
       console.log(
         `[RAGManager] Retrieving similar messages for: "${query.substring(0, 50)}..."`
       );
 
-      const results = await this.retrieval.search(query, topK);
+      let results: RetrievalResult[] = [];
 
-      return results;
+      if (conversationId) {
+        results = await this.retrieveWithFilters(
+          query,
+          { conversation_id: conversationId },
+          topK
+        );
+      }
+
+      let summaryResults: RetrievalResult[] = [];
+      if (conversationId) {
+        summaryResults = await this.retrieveWithFilters(
+          query,
+          { conversation_id: conversationId, content_type: 'conversation_summary' },
+          1
+        );
+      }
+
+      let profileResults: RetrievalResult[] = [];
+      if (includeProfile) {
+        profileResults = await this.retrieveWithFilters(
+          query,
+          { content_type: 'user_profile' },
+          1
+        );
+      }
+
+      if (results.length === 0) {
+        results = await this.retrieval.search(query, topK);
+      }
+
+      return this.mergeResults(results, summaryResults, profileResults, topK);
     } catch (error) {
       console.error('[RAGManager] Error retrieving similar messages:', error);
       return [];
@@ -155,6 +187,7 @@ export class RAGManager {
     filters: {
       conversation_id?: string;
       role?: 'user' | 'assistant';
+      content_type?: 'message' | 'conversation_summary' | 'user_profile';
     },
     topK?: number
   ): Promise<RetrievalResult[]> {
@@ -178,13 +211,17 @@ export class RAGManager {
    */
   async augmentPrompt(
     userMessage: string,
-    topK: number = 5
+    topK: number = 5,
+    conversationId?: string,
+    includeProfile: boolean = false
   ): Promise<AugmentedPrompt> {
     try {
       // Retrieve similar messages
       const retrievedContext = await this.retrieveSimilarMessages(
         userMessage,
-        topK
+        topK,
+        conversationId,
+        includeProfile
       );
 
       // Build context string
@@ -301,6 +338,92 @@ Continue to be helpful, direct, and concise. Reference past conversations if rel
           }`
       )
       .join('\n');
+  }
+
+  /**
+   * Build a memory context block to append to system prompts
+   */
+  buildMemoryContextBlock(retrievedContext: RetrievalResult[]): string {
+    if (retrievedContext.length === 0) {
+      return '';
+    }
+
+    let memoryIndex = 1;
+    const memoryContext = retrievedContext
+      .map((result, idx) => {
+        const snippet = result.message.content.substring(0, 200) +
+          (result.message.content.length > 200 ? '...' : '');
+        let label = `Memory ${memoryIndex}`;
+        if (result.content_type === 'conversation_summary') {
+          label = 'Conversation Summary';
+        } else if (result.content_type === 'user_profile') {
+          label = 'User Profile';
+        } else {
+          memoryIndex += 1;
+        }
+
+        return `[${label}] (Similarity: ${(result.similarity_score * 100).toFixed(0)}%)\n` +
+          `${result.message.role.toUpperCase()}: ${snippet}`;
+      })
+      .join('\n\n');
+
+    return `\n\n[Memory Context]\n` +
+      `You have access to relevant memories from past conversations that may help answer the current question.\n\n` +
+      `${memoryContext}\n\n` +
+      `Use these memories only if they are directly relevant.`;
+  }
+
+  /**
+   * Upsert conversation summary embedding
+   */
+  async upsertConversationSummaryEmbedding(conversationId: string, summary: string): Promise<void> {
+    const summaryId = `summary_${conversationId}`;
+    await this.retrieval.upsertDocumentEmbedding(summaryId, summary, {
+      conversation_id: conversationId,
+      content_type: 'conversation_summary',
+      created_at: new Date().toISOString(),
+      message_length: summary.length,
+    });
+  }
+
+  /**
+   * Upsert single-user profile embedding
+   */
+  async upsertUserProfileEmbedding(profile: string): Promise<void> {
+    const profileId = 'profile_default';
+    await this.retrieval.upsertDocumentEmbedding(profileId, profile, {
+      content_type: 'user_profile',
+      created_at: new Date().toISOString(),
+      message_length: profile.length,
+    });
+  }
+
+  /**
+   * Delete single-user profile embedding
+   */
+  async deleteUserProfileEmbedding(): Promise<void> {
+    await this.retrieval.deleteDocumentEmbedding('profile_default');
+  }
+
+  /**
+   * Merge message, summary, and profile results without duplicates
+   */
+  private mergeResults(
+    messageResults: RetrievalResult[],
+    summaryResults: RetrievalResult[],
+    profileResults: RetrievalResult[],
+    topK?: number
+  ): RetrievalResult[] {
+    const limitedMessages = topK ? messageResults.slice(0, topK) : messageResults;
+    const merged = [...limitedMessages, ...summaryResults, ...profileResults];
+    const deduped = new Map<string, RetrievalResult>();
+    merged.forEach(result => {
+      const existing = deduped.get(result.message.id);
+      if (!existing || result.similarity_score > existing.similarity_score) {
+        deduped.set(result.message.id, result);
+      }
+    });
+    return Array.from(deduped.values());
   }
 }
 

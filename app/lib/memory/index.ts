@@ -3,7 +3,8 @@
 
 import { SQLiteStorage } from './storage/sqlite';
 import { RAGManager } from './rag';
-import { Conversation, Message, AugmentedPrompt } from './schemas';
+import { Conversation, Message, AugmentedPrompt, ConversationSummary, UserProfile } from './schemas';
+import { createHash } from 'crypto';
 
 let storageInstance: SQLiteStorage | null = null;
 
@@ -116,9 +117,14 @@ export class MemoryManager {
   /**
    * Augment a user message with retrieved context from memory
    */
-  async augmentWithMemory(userMessage: string, topK: number = 5): Promise<AugmentedPrompt> {
+  async augmentWithMemory(
+    userMessage: string,
+    topK: number = 5,
+    conversationId?: string
+  ): Promise<AugmentedPrompt> {
     try {
-      return await this.rag.augmentPrompt(userMessage, topK);
+      const includeProfile = this.isProfileConsentGranted();
+      return await this.rag.augmentPrompt(userMessage, topK, conversationId, includeProfile);
     } catch (error) {
       console.error('[MemoryManager] Error augmenting with memory:', error);
       return {
@@ -127,6 +133,100 @@ export class MemoryManager {
         enhanced_system_prompt: 'You are Hacker Reign - a friendly coding expert.',
       };
     }
+  }
+
+  /**
+   * Save or update a conversation summary and embed it for retrieval
+   */
+  async saveConversationSummary(conversationId: string, summary: string): Promise<void> {
+    const contentHash = this.hashContent(summary);
+    const existing = this.storage.getConversationSummary(conversationId);
+    if (existing && existing.content_hash === contentHash) {
+      return;
+    }
+
+    this.storage.saveConversationSummary(conversationId, summary, contentHash);
+
+    try {
+      await this.rag.upsertConversationSummaryEmbedding(conversationId, summary);
+      this.storage.updateConversationSummaryEmbeddingStatus(conversationId, 'success');
+    } catch (error) {
+      this.storage.updateConversationSummaryEmbeddingStatus(
+        conversationId,
+        'failed',
+        (error as Error).message
+      );
+    }
+  }
+
+  /**
+   * Get a conversation summary
+   */
+  getConversationSummary(conversationId: string): ConversationSummary | null {
+    return this.storage.getConversationSummary(conversationId);
+  }
+
+  /**
+   * Save or update the single-user profile (requires explicit consent)
+   */
+  async saveUserProfile(profile: string, consent: boolean): Promise<void> {
+    if (!consent) {
+      console.warn('[MemoryManager] Profile update skipped: consent not granted');
+      return;
+    }
+
+    this.setProfileConsent(true);
+    const contentHash = this.hashContent(profile);
+    const existing = this.storage.getUserProfile();
+    if (existing && existing.content_hash === contentHash) {
+      return;
+    }
+
+    this.storage.saveUserProfile(profile, contentHash);
+
+    try {
+      await this.rag.upsertUserProfileEmbedding(profile);
+      this.storage.updateUserProfileEmbeddingStatus('success');
+    } catch (error) {
+      this.storage.updateUserProfileEmbeddingStatus(
+        'failed',
+        (error as Error).message
+      );
+    }
+  }
+
+  /**
+   * Get the single-user profile
+   */
+  getUserProfile(): UserProfile | null {
+    return this.storage.getUserProfile();
+  }
+
+  /**
+   * Clear single-user profile data and embeddings
+   */
+  async clearUserProfile(): Promise<void> {
+    try {
+      this.storage.deleteUserProfile();
+      await this.rag.deleteUserProfileEmbedding();
+    } catch (error) {
+      console.warn('[MemoryManager] Failed to clear user profile:', error);
+    }
+  }
+
+  /**
+   * Set profile consent (local only)
+   */
+  setProfileConsent(consent: boolean): void {
+    this.storage.setPreference('memory_profile_consent', consent);
+  }
+
+  /**
+   * Check whether profile consent is granted
+   */
+  isProfileConsentGranted(): boolean {
+    const pref = this.storage.getPreference('memory_profile_consent');
+    return pref?.data_type === 'boolean' ? pref.value === 'true' : false;
   }
 
   /**
@@ -184,10 +284,24 @@ export class MemoryManager {
   }
 
   /**
+   * Build a memory context block to append to system prompts
+   */
+  buildMemoryContextBlock(augmented: AugmentedPrompt): string {
+    return this.rag.buildMemoryContextBlock(augmented.retrieved_context);
+  }
+
+  /**
    * Generate unique IDs
    */
   private generateId(prefix: string): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+  }
+
+  /**
+   * Create a stable hash for content change detection
+   */
+  private hashContent(content: string): string {
+    return createHash('sha256').update(content).digest('hex');
   }
 }
 

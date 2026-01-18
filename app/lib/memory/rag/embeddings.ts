@@ -141,6 +141,13 @@ export class OllamaEmbeddings {
   }
 
   /**
+   * Get the configured embedding model name
+   */
+  getEmbeddingModel(): string {
+    return this.embeddingModel;
+  }
+
+  /**
    * Calculate cosine similarity between two normalized vectors
    * Result is between -1 and 1, where 1 is identical
    */

@@ -32,6 +32,30 @@ export interface Conversation {
 }
 
 /**
+ * Conversation summary record
+ */
+export interface ConversationSummary {
+  conversation_id: string;
+  summary: string;
+  updated_at: string;
+  content_hash?: string;
+  embedding_status: 'pending' | 'success' | 'failed';
+  error_message?: string;
+}
+
+/**
+ * Single-user profile record (local only)
+ */
+export interface UserProfile {
+  id: string;
+  profile: string;
+  updated_at: string;
+  content_hash?: string;
+  embedding_status: 'pending' | 'success' | 'failed';
+  error_message?: string;
+}
+
+/**
  * Tool execution metadata
  */
 export interface ToolCall {
@@ -91,6 +115,7 @@ export interface RetrievalResult {
   message: Message;
   similarity_score: number;
   conversation_summary?: string;
+  content_type?: 'message' | 'conversation_summary' | 'user_profile';
 }
 
 /**

@@ -44,28 +44,44 @@ export class ChromaRetrieval {
    */
   async initialize(): Promise<void> {
     try {
-      // Try to get existing collection
-      try {
-        await this.client.getCollection({
-          name: this.collectionName,
-        });
+      const storage = getStorage();
+      const storedPreference = storage.getPreference('rag_collection_meta');
+      const storedMeta = storedPreference?.data_type === 'json'
+        ? JSON.parse(storedPreference.value)
+        : null;
 
-        // If we get here, collection exists
-        // Collections created with default embedding function will cause warnings
-        // Recreate to ensure clean state with proper embedding function setup
-        console.log('[ChromaRetrieval] Existing collection found, recreating for clean state...');
-        await this.client.deleteCollection({ name: this.collectionName });
-      } catch (error: any) {
-        // Collection doesn't exist or other error - we'll create it fresh
-        if (error?.message?.includes('does not exist')) {
-          console.log('[ChromaRetrieval] No existing collection found, creating new...');
-        } else {
-          console.log('[ChromaRetrieval] Collection needs recreation due to:', error?.message);
-          try {
-            await this.client.deleteCollection({ name: this.collectionName });
-          } catch {
-            // Collection might not exist, continue
-          }
+      const embeddingModel = this.embeddings.getEmbeddingModel();
+      const embeddingDimension = await this.embeddings.getEmbeddingDimension();
+      const currentMeta = {
+        collection_name: this.collectionName,
+        embedding_model: embeddingModel,
+        embedding_dimension: embeddingDimension,
+      };
+
+      const needsRebuild = !storedMeta ||
+        storedMeta.collection_name !== currentMeta.collection_name ||
+        storedMeta.embedding_model !== currentMeta.embedding_model ||
+        storedMeta.embedding_dimension !== currentMeta.embedding_dimension;
+
+      if (needsRebuild) {
+        console.log('[ChromaRetrieval] Stored collection metadata:', storedMeta || 'none');
+        console.log('[ChromaRetrieval] Current collection metadata:', currentMeta);
+        console.log('[ChromaRetrieval] Collection metadata mismatch or missing; rebuilding collection...');
+        try {
+          await this.client.deleteCollection({ name: this.collectionName });
+        } catch {
+          // Collection might not exist, continue
+        }
+      } else {
+        console.log('[ChromaRetrieval] Stored collection metadata:', storedMeta);
+        console.log('[ChromaRetrieval] Current collection metadata:', currentMeta);
+        // If metadata matches, keep the existing collection if it exists
+        try {
+          await this.client.getCollection({ name: this.collectionName });
+          console.log('[ChromaRetrieval] Existing collection found, keeping it.');
+          return;
+        } catch {
+          console.log('[ChromaRetrieval] Existing collection not found, creating new...');
         }
       }
 
@@ -81,6 +97,7 @@ export class ChromaRetrieval {
         },
       });
 
+      storage.setPreference('rag_collection_meta', currentMeta);
       console.log(`[ChromaRetrieval] Collection '${this.collectionName}' ready`);
     } catch (error) {
       console.error('[ChromaRetrieval] Error initializing collection:', error);
@@ -115,6 +132,7 @@ export class ChromaRetrieval {
             created_at: message.created_at,
             model_used: message.model_used || 'unknown',
             message_length: message.content.length,
+            content_type: 'message',
           },
         ],
       });
@@ -147,6 +165,7 @@ export class ChromaRetrieval {
         created_at: m.created_at,
         model_used: m.model_used || 'unknown',
         message_length: m.content.length,
+        content_type: 'message',
       }));
 
       // Get collection
@@ -225,6 +244,7 @@ export class ChromaRetrieval {
         const distance = results.distances?.[0]?.[i] || 0;
         const document = results.documents?.[0]?.[i] || '';
         const metadata = results.metadatas?.[0]?.[i] as any || {};
+        const contentType = metadata.content_type || 'message';
 
         // Chroma uses distance (lower is better), convert to similarity (0-1)
         // For cosine: similarity = 1 - distance
@@ -232,6 +252,24 @@ export class ChromaRetrieval {
 
         // Filter by threshold
         if (similarity < this.similarityThreshold) {
+          continue;
+        }
+
+        if (contentType !== 'message') {
+          const syntheticMessage: Message = {
+            id: messageId,
+            conversation_id: metadata.conversation_id || 'profile',
+            role: 'system',
+            content: document,
+            created_at: metadata.created_at || new Date().toISOString(),
+          };
+
+          retrievalResults.push({
+            message: syntheticMessage,
+            similarity_score: similarity,
+            conversation_summary: metadata.conversation_id,
+            content_type: contentType,
+          });
           continue;
         }
 
@@ -244,6 +282,7 @@ export class ChromaRetrieval {
             message: fullMessage,
             similarity_score: similarity,
             conversation_summary: metadata.conversation_id,
+            content_type: 'message',
           });
         }
       }
@@ -269,6 +308,7 @@ export class ChromaRetrieval {
       conversation_id?: string;
       role?: 'user' | 'assistant';
       dateRange?: { from: Date; to: Date };
+      content_type?: 'message' | 'conversation_summary' | 'user_profile';
     },
     topK?: number
   ): Promise<RetrievalResult[]> {
@@ -282,10 +322,64 @@ export class ChromaRetrieval {
       chromaFilters.role = { $eq: filters.role };
     }
 
+    if (filters.content_type) {
+      chromaFilters.content_type = { $eq: filters.content_type };
+    }
+
     // Note: Chroma doesn't have direct date range support in filters
     // We'll filter on the client side after retrieval
 
     return this.search(query, topK, chromaFilters);
+  }
+
+  /**
+   * Upsert a custom document embedding (summaries/profile)
+   */
+  async upsertDocumentEmbedding(
+    id: string,
+    content: string,
+    metadata: Record<string, any>
+  ): Promise<void> {
+    try {
+      const embedding = await this.embeddings.embed(content);
+
+      const collection = await this.client.getCollection({
+        name: this.collectionName,
+        embeddingFunction: undefined,
+      });
+
+      try {
+        await collection.delete({ ids: [id] });
+      } catch {
+        // Ignore if it doesn't exist
+      }
+
+      await collection.add({
+        ids: [id],
+        embeddings: [embedding],
+        documents: [content],
+        metadatas: [metadata],
+      });
+    } catch (error) {
+      console.error('[ChromaRetrieval] Error upserting document embedding:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a custom document embedding (summaries/profile)
+   */
+  async deleteDocumentEmbedding(id: string): Promise<void> {
+    try {
+      const collection = await this.client.getCollection({
+        name: this.collectionName,
+        embeddingFunction: undefined,
+      });
+
+      await collection.delete({ ids: [id] });
+    } catch (error) {
+      console.error('[ChromaRetrieval] Error deleting document embedding:', error);
+    }
   }
 
   /**

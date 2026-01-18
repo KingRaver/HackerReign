@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       stream: requestedStream = true,
       enableTools: requestedEnableTools = false,
       conversationId = null,
-      useMemory = true, // Enable memory augmentation
+      useMemory: _useMemory = true, // Memory augmentation is always enabled
       filePath, // Optional: file path for domain detection
       manualModeOverride, // Optional: user-selected mode ('learning' | 'code-review' | 'expert')
       strategyEnabled: requestStrategyEnabled = false, // NEW: Strategy system toggle
@@ -138,15 +138,20 @@ Keep responses clear, concise, and helpful. Use markdown formatting where approp
     // ============================================================
     // MEMORY AUGMENTATION: Retrieve past context
     // ============================================================
+    const useMemory = true;
     // Augment prompt with memory if enabled and this is a user message
     if (useMemory && lastUserMessage?.role === 'user') {
       try {
-        const augmented = await memory.augmentWithMemory(lastUserMessage.content);
+        const augmented = await memory.augmentWithMemory(
+          lastUserMessage.content,
+          5,
+          currentConversationId || undefined
+        );
 
         // Only include context if we found relevant memories
         if (augmented.retrieved_context.length > 0) {
           // Append memory context to the domain-aware system prompt
-          systemPrompt = augmented.enhanced_system_prompt;
+          systemPrompt += memory.buildMemoryContextBlock(augmented);
 
           // Log what was retrieved (for debugging)
           console.log('[Memory] Retrieved context:');
