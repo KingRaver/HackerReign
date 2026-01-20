@@ -12,6 +12,14 @@ interface ModelOption {
   speed: string;
 }
 
+interface UserProfile {
+  codingStyle?: string;
+  languages?: string;
+  frameworks?: string;
+  preferences?: string;
+  notes?: string;
+}
+
 export interface ToolbarSettings {
   manualMode: '' | 'learning' | 'code-review' | 'expert';
   selectedStrategy: StrategyType;
@@ -46,6 +54,12 @@ export default function LeftToolbar({
     memoryConsent: false,
   });
 
+  // Profile state
+  const [profileExpanded, setProfileExpanded] = useState(false);
+  const [profile, setProfile] = useState<UserProfile>({});
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+
   // Load memory consent preference on mount
   useEffect(() => {
     const loadConsent = async () => {
@@ -60,6 +74,30 @@ export default function LeftToolbar({
     };
     loadConsent();
   }, []);
+
+  // Load profile when expanded and consent is granted
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!profileExpanded || !settings.memoryConsent) return;
+
+      setProfileLoading(true);
+      try {
+        const response = await fetch('/api/profile');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.profile) {
+            // Parse the profile string into structured fields
+            setProfile(data.profile);
+          }
+        }
+      } catch (error) {
+        console.warn('[LeftToolbar] Failed to load profile:', error);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    loadProfile();
+  }, [profileExpanded, settings.memoryConsent]);
 
   // Notify Chat whenever settings change
   useEffect(() => {
@@ -87,9 +125,67 @@ export default function LeftToolbar({
       if (!response.ok) {
         updateSetting('memoryConsent', !next); // Revert on error
       }
+      // Clear profile when consent revoked
+      if (!next) {
+        setProfile({});
+        setProfileExpanded(false);
+      }
     } catch (error) {
       console.warn('[LeftToolbar] Failed to update memory consent:', error);
       updateSetting('memoryConsent', !next); // Revert on error
+    }
+  };
+
+  // Handle profile updates
+  const handleProfileChange = (field: keyof UserProfile, value: string) => {
+    setProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Save profile to backend
+  const handleSaveProfile = async () => {
+    if (!settings.memoryConsent) {
+      alert('Please enable Memory consent first');
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      // Convert structured profile to string format for backend
+      const profileText = Object.entries(profile)
+        .filter(([_, value]) => value && value.trim())
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: profileText, consent: settings.memoryConsent }),
+      });
+
+      if (response.ok) {
+        console.log('[LeftToolbar] Profile saved successfully');
+      } else {
+        console.error('[LeftToolbar] Failed to save profile');
+      }
+    } catch (error) {
+      console.error('[LeftToolbar] Error saving profile:', error);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  // Clear profile
+  const handleClearProfile = async () => {
+    if (!confirm('Clear your profile data? This cannot be undone.')) return;
+
+    try {
+      const response = await fetch('/api/profile', { method: 'DELETE' });
+      if (response.ok) {
+        setProfile({});
+        console.log('[LeftToolbar] Profile cleared');
+      }
+    } catch (error) {
+      console.error('[LeftToolbar] Error clearing profile:', error);
     }
   };
 
@@ -99,9 +195,9 @@ export default function LeftToolbar({
   return (
     <>
       {/* Desktop: Vertical Tool Rail */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0">
+      <aside className="hidden md:flex flex-col w-56 shrink-0 overflow-y-auto max-h-[calc(100vh-10rem)]">
         <div className="rounded-3xl border-2 border-slate-900/40 bg-linear-to-b from-cyan-light/30 via-white/70 to-peach/40 shadow-xl p-4">
-          <div className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
+          <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
             Tool Rail
           </div>
 
@@ -263,10 +359,88 @@ export default function LeftToolbar({
             >
               🎙️ Voice {settings.voiceEnabled ? 'ON' : 'OFF'}
             </button>
+
+            {/* Profile Section - Expandable */}
+            <div className="mt-3 rounded-2xl border-2 border-slate-900/30 bg-white/60 overflow-hidden">
+              <button
+                onClick={() => setProfileExpanded(!profileExpanded)}
+                disabled={!settings.memoryConsent}
+                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold transition-all ${
+                  settings.memoryConsent
+                    ? 'text-slate-900 hover:bg-white/70 cursor-pointer'
+                    : 'text-slate-400 cursor-not-allowed opacity-60'
+                }`}
+                title={settings.memoryConsent ? 'Manage your profile' : 'Enable Memory to use Profile'}
+              >
+                <span>👤 Profile</span>
+                <span className="text-lg">{profileExpanded ? '▼' : '▶'}</span>
+              </button>
+
+              {profileExpanded && settings.memoryConsent && (
+                <div className="px-3 pb-3 space-y-2 border-t border-slate-900/20 pt-2">
+                  {profileLoading ? (
+                    <div className="text-xs text-slate-600 text-center py-2">Loading...</div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Coding Style (e.g., functional, OOP)"
+                        value={profile.codingStyle || ''}
+                        onChange={(e) => handleProfileChange('codingStyle', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg text-xs border-2 border-slate-900/40 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal/60 focus:border-teal/60"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Languages (e.g., TypeScript, Python)"
+                        value={profile.languages || ''}
+                        onChange={(e) => handleProfileChange('languages', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg text-xs border-2 border-slate-900/40 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal/60 focus:border-teal/60"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Frameworks (e.g., React, Next.js)"
+                        value={profile.frameworks || ''}
+                        onChange={(e) => handleProfileChange('frameworks', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg text-xs border-2 border-slate-900/40 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal/60 focus:border-teal/60"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Preferences (e.g., testing, docs)"
+                        value={profile.preferences || ''}
+                        onChange={(e) => handleProfileChange('preferences', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg text-xs border-2 border-slate-900/40 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal/60 focus:border-teal/60"
+                      />
+                      <textarea
+                        placeholder="Additional notes..."
+                        value={profile.notes || ''}
+                        onChange={(e) => handleProfileChange('notes', e.target.value)}
+                        rows={3}
+                        className="w-full px-2 py-1.5 rounded-lg text-xs border-2 border-slate-900/40 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal/60 focus:border-teal/60 resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSaveProfile}
+                          disabled={profileSaving}
+                          className="flex-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-linear-to-r from-cyan-light/80 to-teal/80 text-slate-900 border border-slate-900/50 hover:from-cyan-light hover:to-teal transition-all shadow-sm hover:shadow-md disabled:opacity-50"
+                        >
+                          {profileSaving ? 'Saving...' : '💾 Save'}
+                        </button>
+                        <button
+                          onClick={handleClearProfile}
+                          className="px-2 py-1.5 rounded-lg text-xs font-bold bg-white/80 text-red-600 border border-red-600/50 hover:bg-red-50 transition-all shadow-sm hover:shadow-md"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-slate-900/20 bg-white/60 px-3 py-2 text-[11px] font-semibold text-slate-700">
-            🚧 More settings coming 🚧
+          <div className="mt-6 rounded-2xl border-2 border-slate-900/30 bg-white/80 px-3 py-2 text-[11px] font-bold text-slate-900">
+            💾 Summaries auto-save every 5 messages
           </div>
         </div>
       </aside>

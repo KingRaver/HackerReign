@@ -5,6 +5,8 @@ import { OllamaEmbeddings, getSharedEmbeddings } from './embeddings';
 import { ChromaRetrieval } from './retrieval';
 import { Message, AugmentedPrompt, RetrievalResult } from '../schemas';
 import { getStorage } from '../storage';
+import { logRetrievalMetrics, RetrievalMetrics } from '../metrics';
+import { getMemoryConfig } from '../config';
 
 /**
  * RAG Manager
@@ -135,21 +137,41 @@ export class RAGManager {
     conversationId?: string,
     includeProfile: boolean = false
   ): Promise<RetrievalResult[]> {
+    const startTime = Date.now();
+    const config = getMemoryConfig();
+
+    // Track timing for each source
+    let denseStartTime = 0;
+    let denseMs = 0;
+
     try {
       console.log(
         `[RAGManager] Retrieving similar messages for: "${query.substring(0, 50)}..."`
       );
 
       let results: RetrievalResult[] = [];
+      let conversationResults: RetrievalResult[] = [];
+      let globalResults: RetrievalResult[] = [];
 
+      // Conversation-scoped dense retrieval
+      denseStartTime = Date.now();
       if (conversationId) {
-        results = await this.retrieveWithFilters(
+        conversationResults = await this.retrieveWithFilters(
           query,
           { conversation_id: conversationId },
           topK
         );
+        results = conversationResults;
       }
 
+      // Global fallback if conversation results are insufficient
+      if (results.length === 0) {
+        globalResults = await this.retrieval.search(query, topK);
+        results = globalResults;
+      }
+      denseMs = Date.now() - denseStartTime;
+
+      // Summary retrieval
       let summaryResults: RetrievalResult[] = [];
       if (conversationId) {
         summaryResults = await this.retrieveWithFilters(
@@ -159,6 +181,7 @@ export class RAGManager {
         );
       }
 
+      // Profile retrieval (only if consent given)
       let profileResults: RetrievalResult[] = [];
       if (includeProfile) {
         profileResults = await this.retrieveWithFilters(
@@ -168,13 +191,74 @@ export class RAGManager {
         );
       }
 
-      if (results.length === 0) {
-        results = await this.retrieval.search(query, topK);
-      }
+      const merged = this.mergeResults(results, summaryResults, profileResults, topK);
 
-      return this.mergeResults(results, summaryResults, profileResults, topK);
+      // Extract top similarities
+      const topSimilarities = merged
+        .slice(0, 3)
+        .map(r => r.similarity_score);
+
+      // Log retrieval metrics (Phase 1)
+      const totalMs = Date.now() - startTime;
+      const metrics: RetrievalMetrics = {
+        query,
+        timestamp: Date.now(),
+        conversationId,
+        sources: {
+          conversationDense: conversationResults.length,
+          globalDense: globalResults.length,
+          summaries: summaryResults.length,
+          profile: profileResults.length,
+          ftsLexical: 0, // Phase 3: will be populated when hybrid is enabled
+        },
+        latency: {
+          totalMs,
+          denseMs,
+          ftsMs: 0,      // Phase 3: will be populated when hybrid is enabled
+          rerankMs: 0,   // Phase 3: will be populated when hybrid is enabled
+        },
+        topSimilarities,
+        flags: {
+          hybrid: config.ragHybrid,
+          chunking: config.ragChunking,
+          tokenBudget: config.ragTokenBudget,
+        },
+      };
+
+      // Log metrics asynchronously (don't block retrieval)
+      logRetrievalMetrics(metrics).catch(err => {
+        console.warn('[RAGManager] Failed to log metrics:', err);
+      });
+
+      return merged;
     } catch (error) {
       console.error('[RAGManager] Error retrieving similar messages:', error);
+
+      // Log failed retrieval
+      const totalMs = Date.now() - startTime;
+      logRetrievalMetrics({
+        query,
+        timestamp: Date.now(),
+        conversationId,
+        sources: {
+          conversationDense: 0,
+          globalDense: 0,
+          summaries: 0,
+          profile: 0,
+          ftsLexical: 0,
+        },
+        latency: {
+          totalMs,
+          denseMs: 0,
+        },
+        topSimilarities: [],
+        flags: {
+          hybrid: config.ragHybrid,
+          chunking: config.ragChunking,
+          tokenBudget: config.ragTokenBudget,
+        },
+      }).catch(() => {}); // Ignore metric logging errors
+
       return [];
     }
   }

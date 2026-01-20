@@ -18,7 +18,7 @@ import {
 export type WorkflowMode = 'chain' | 'ensemble' | 'auto';
 
 export class WorkflowStrategy extends BaseStrategy {
-  name = 'Workflow';
+  name = 'workflow';
   priority = 115;  // Highest priority - above adaptive
   type = 'workflow';
 
