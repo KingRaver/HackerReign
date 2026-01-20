@@ -4,7 +4,7 @@ import { StrategyDecision, StrategyContext } from '../types';
 import { StrategyAnalytics } from '../analytics/tracker';
 
 export class QualityStrategy extends BaseStrategy {
-  name = 'Quality First';
+  name = 'quality';
   priority = 80;
   type = 'quality';
   private analytics = new StrategyAnalytics();

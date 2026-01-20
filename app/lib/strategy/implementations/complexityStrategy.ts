@@ -10,7 +10,7 @@ import { StrategyAnalytics } from '../analytics/tracker';
  */
 
 export class ComplexityStrategy extends BaseStrategy {
-  name = 'Complexity-Based';
+  name = 'balanced';
   priority = 100;
   type = 'balanced';
   private analytics = new StrategyAnalytics();

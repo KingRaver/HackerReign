@@ -4,7 +4,7 @@ import { StrategyDecision, StrategyContext } from '../types';
 import { StrategyAnalytics } from '../analytics/tracker';
 
 export class CostStrategy extends BaseStrategy {
-  name = 'Cost Optimized';
+  name = 'cost';
   priority = 70;
   type = 'cost';
   private analytics = new StrategyAnalytics();

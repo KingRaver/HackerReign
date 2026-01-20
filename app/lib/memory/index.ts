@@ -4,6 +4,7 @@
 import { SQLiteStorage } from './storage/sqlite';
 import { RAGManager } from './rag';
 import { Conversation, Message, AugmentedPrompt, ConversationSummary, UserProfile } from './schemas';
+import { getMemoryConfig } from './config';
 import { createHash } from 'crypto';
 
 let storageInstance: SQLiteStorage | null = null;
@@ -111,6 +112,23 @@ export class MemoryManager {
       console.warn('[MemoryManager] Error processing message for RAG:', error);
     });
 
+    // Phase 2: Auto-generate conversation summary after N assistant messages
+    if (role === 'assistant') {
+      const config = getMemoryConfig();
+      const freq = config.ragSummaryFrequency;
+
+      if (freq > 0) {
+        const count = this.getConversationMessageCount(conversationId, 'assistant');
+
+        if (count % freq === 0) {
+          // Generate summary asynchronously (don't block message saving)
+          this.generateConversationSummary(conversationId).catch(error => {
+            console.warn('[MemoryManager] Error generating conversation summary:', error);
+          });
+        }
+      }
+    }
+
     return message;
   }
 
@@ -156,6 +174,80 @@ export class MemoryManager {
         'failed',
         (error as Error).message
       );
+    }
+  }
+
+  /**
+   * Generate a conversation summary using recent messages
+   * Phase 2: Called automatically every N messages
+   */
+  async generateConversationSummary(conversationId: string): Promise<void> {
+    console.log(`[MemoryManager] Starting summary generation for conversation ${conversationId}`);
+
+    try {
+      // Fetch last 10 messages from the conversation
+      const allMessages = this.storage.getConversationMessages(conversationId);
+      const recentMessages = allMessages.slice(-10);
+
+      console.log(`[MemoryManager] Found ${recentMessages.length} messages to summarize`);
+
+      if (recentMessages.length === 0) {
+        console.warn('[MemoryManager] No messages to summarize');
+        return;
+      }
+
+      // Format messages for summarization
+      const messageText = recentMessages
+        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n');
+
+      // Build summarization prompt
+      const summaryPrompt = `Please provide a concise summary of this conversation focusing on:
+1. Key topics discussed
+2. Main technical decisions or solutions
+3. Important context for future reference
+
+Conversation:
+${messageText}
+
+Summary (2-3 sentences):`;
+
+      // Call Ollama API to generate summary
+      const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+      console.log(`[MemoryManager] Calling Ollama at ${ollamaHost}`);
+
+      const response = await fetch(`${ollamaHost}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'qwen2.5-coder:7b-instruct-q5_K_M',
+          prompt: summaryPrompt,
+          stream: false,
+        }),
+      });
+
+      console.log(`[MemoryManager] Ollama response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ollama API failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const summary = data.response?.trim();
+
+      console.log(`[MemoryManager] Generated summary length: ${summary?.length || 0} chars`);
+
+      if (summary) {
+        // Save the summary and create embeddings
+        await this.saveConversationSummary(conversationId, summary);
+        console.log(`[MemoryManager] ✓ Summary saved for conversation ${conversationId}`);
+      } else {
+        console.warn('[MemoryManager] Summary was empty or undefined');
+      }
+    } catch (error) {
+      console.error('[MemoryManager] ✗ Error generating summary:', error);
+      throw error;
     }
   }
 
@@ -241,6 +333,14 @@ export class MemoryManager {
    */
   getConversationMessages(conversationId: string): Message[] {
     return this.storage.getConversationMessages(conversationId);
+  }
+
+  /**
+   * Get count of messages in a conversation
+   * Used for summary generation frequency (Phase 2)
+   */
+  getConversationMessageCount(conversationId: string, role?: 'user' | 'assistant'): number {
+    return this.storage.getConversationMessageCount(conversationId, role);
   }
 
   /**

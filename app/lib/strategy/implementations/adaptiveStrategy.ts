@@ -18,7 +18,7 @@ import {
  */
 
 export class AdaptiveStrategy extends BaseStrategy {
-  name = 'Adaptive ML';
+  name = 'adaptive';
   priority = 110;  // Highest priority
   type = 'adaptive';
 

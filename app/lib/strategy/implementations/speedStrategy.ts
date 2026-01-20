@@ -4,7 +4,7 @@ import { StrategyDecision, StrategyContext } from '../types';
 import { StrategyAnalytics } from '../analytics/tracker';
 
 export class SpeedStrategy extends BaseStrategy {
-  name = 'Speed First';
+  name = 'speed';
   priority = 90;
   type = 'speed';
   private analytics = new StrategyAnalytics();

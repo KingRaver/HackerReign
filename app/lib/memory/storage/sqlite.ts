@@ -288,6 +288,23 @@ export class SQLiteStorage {
   }
 
   /**
+   * READ: Get count of messages in a conversation (for summary frequency)
+   */
+  getConversationMessageCount(conversationId: string, role?: 'user' | 'assistant'): number {
+    let query = `SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?`;
+    const params: any[] = [conversationId];
+
+    if (role) {
+      query += ` AND role = ?`;
+      params.push(role);
+    }
+
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as any;
+    return row?.count || 0;
+  }
+
+  /**
    * UPDATE: Update conversation
    */
   updateConversation(conversationId: string, updates: Partial<Conversation>): void {
