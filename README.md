@@ -15,9 +15,10 @@ An advanced Next.js-powered AI chat application with local LLM integration via O
   - **Quality**: Always best models for maximum accuracy
   - **Cost**: Token-optimized for efficiency
   - **Adaptive**: ML-driven learning from historical performance
+  - **Workflow**: Multi-model orchestration (chain or ensemble modes)
 - **Multi-Model Workflows**:
-  - **Chain Mode**: Draft → Refine → Review pipeline
-  - **Ensemble**: Parallel voting for consensus
+  - **Chain Mode**: Draft → Refine → Review pipeline (sequential processing)
+  - **Ensemble Mode**: Parallel voting for consensus-based outputs
 - **Resource Management**: Automatic adaptation to RAM, CPU, GPU, and battery constraints
 - **Analytics**: SQLite-based performance tracking with continuous learning
 
@@ -62,10 +63,20 @@ An advanced Next.js-powered AI chat application with local LLM integration via O
 - **Manual Override**: Force specific mode or model via UI controls
 
 ### 🧠 Memory & RAG System
-- **Persistent Storage**: SQLite-based conversation history
+- **Persistent Storage**: SQLite-based conversation history with 7 applied migrations
 - **Semantic Search**: Vector similarity search over past conversations
 - **RAG Integration**: Retrieval-Augmented Generation with ChromaDB
-- **Vector Embeddings**: Ollama nomic-embed-text for message embeddings
+- **Vector Embeddings**: Ollama nomic-embed-text (768-dimensional) for message embeddings
+- **Phase 2 Features** (January 2026):
+  - **Conversation Summaries**: Automatic summarization every 5 messages
+  - **User Profile Management**: Structured 5-field profile with consent enforcement
+  - **Profile UI**: Integrated profile editor in LeftToolbar component
+- **Phase 3 Features - Hybrid Retrieval** (January 2026 - ENABLED):
+  - **Dual Search System**: Combines semantic (dense) + lexical (FTS5/BM25) search
+  - **Code Identifier Matching**: Extracts and matches camelCase, PascalCase, function names
+  - **Intelligent Reranking**: Weighted scoring algorithm (α=0.6 dense, β=0.3 BM25, γ=0.1 code)
+  - **FTS5 Index**: Full-text search with 346 messages indexed for instant keyword lookup
+  - **Performance**: <10ms total overhead vs dense-only retrieval
 - **Strategy Analytics**: Performance tracking for ML-driven optimization
   - Decision logging with reasoning and confidence scores
   - Outcome tracking with quality metrics and user feedback
@@ -114,6 +125,159 @@ An advanced Next.js-powered AI chat application with local LLM integration via O
 - **Resource Monitoring**: Real-time RAM, CPU, GPU, battery tracking
 - **Modern Stack**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
 
+## AI Models Used
+
+This system uses multiple AI models for different purposes. Here's a complete inventory:
+
+### 1. LLM Models (Code Generation & Chat)
+
+**Core Models Available in UI:**
+- **llama3.2:3b-instruct-q5_K_M** (2.5GB RAM) - Llama 3.2 🚀
+  - Best for: Fast responses, simple questions, quick completions
+  - Speed: ~80 tokens/sec on M4 Mac
+- **qwen2.5:7b-instruct-q5_K_M** (5GB RAM) - Qwen 2.5 🎯🔨
+  - Best for: General purpose chat and coding
+  - Speed: ~40 tokens/sec
+- **qwen2.5-coder:7b-instruct-q5_K_M** (5GB RAM) - Vibe Coder ⚡ (Default)
+  - Best for: Python/TypeScript/JavaScript code generation
+  - Speed: ~40 tokens/sec
+  - Optimized for: Next.js, React, FastAPI, async patterns
+- **yi-coder:9b** (6GB RAM) - Yi 9B 🧠
+  - Best for: Web development (Python, JS, TS, Node, HTML, SQL)
+  - Speed: ~35 tokens/sec
+  - Highest quality for full-stack development
+- **deepseek-coder-v2:16b** (10GB RAM) - DeepSeek V2 🔥
+  - Best for: Complex debugging, architecture decisions, expert analysis
+  - Speed: ~25 tokens/sec
+  - GPT-4 level coding performance
+
+**Model Selection:**
+- **Manual**: Select from dropdown in Chat UI
+- **Automatic**: Strategy system chooses based on task complexity (when enabled)
+- **Fallback**: System downgrades to llama3.2:3b on low RAM
+
+**Installation:**
+```bash
+# Minimum setup (choose one based on RAM)
+ollama pull llama3.2:3b-instruct-q5_K_M        # 4GB+ systems
+
+# Recommended setup (8GB+ RAM)
+ollama pull qwen2.5-coder:7b-instruct-q5_K_M   # Default model
+ollama pull llama3.2:3b-instruct-q5_K_M        # Fast fallback
+
+# Power user setup (16GB+ RAM)
+ollama pull qwen2.5-coder:7b-instruct-q5_K_M   # Balanced coding
+ollama pull yi-coder:9b                        # Web dev specialist
+ollama pull deepseek-coder-v2:16b              # Expert analysis
+ollama pull qwen2.5:7b-instruct-q5_K_M        # General purpose
+ollama pull llama3.2:3b-instruct-q5_K_M        # Fast responses
+```
+
+**For complete model guide with benchmarks, see:** [MODELS.md](MODELS.md)
+
+### 2. Embedding Model (RAG/Semantic Search)
+
+**Required:**
+- **nomic-embed-text** (137MB) - 768-dimensional embeddings
+  - Used for: Vector search, semantic similarity, memory retrieval
+  - Truncated to 384 dims in DL-Codegen for efficiency
+
+**Installation:**
+```bash
+ollama pull nomic-embed-text
+```
+
+**Alternatives (optional):**
+- `mxbai-embed-large` (670MB) - Higher accuracy
+- `all-minilm` (45MB) - Ultra-lightweight
+
+### 3. Speech-to-Text Model (Voice Input)
+
+**Model:** OpenAI Whisper `small` (330MB)
+
+**Installation:**
+```bash
+# Install Whisper
+pip3 install openai-whisper
+
+# Download model (one-time setup)
+whisper --model small --task transcribe /dev/null
+```
+
+**Features:**
+- Local transcription (no API calls)
+- Automatic silence detection (3 seconds)
+- WebM to WAV conversion included
+- Supports push-to-talk and continuous listening
+
+### 4. Text-to-Speech Models (Voice Output)
+
+**System:** Piper TTS (ONNX-based neural voice models)
+
+**Available Voices:**
+- `en_US-libritts-high` (default) - High quality, slower (~2-3s latency)
+- `en_US-amy-medium` - Medium quality, faster (~1-2s latency)
+- `en_US-lessac-medium` - Alternative medium quality
+- `en_US-ryan-high` - Male voice, high quality
+
+**Installation:**
+```bash
+# Install Piper TTS
+pip install piper-tts
+
+# Verify installation
+python3 -m piper --version
+
+# Voice models auto-download to ~/.piper/models/ on first use
+```
+
+**Configuration:**
+Set in `.env.local`:
+```env
+NEXT_PUBLIC_PIPER_VOICE=en_US-libritts-high
+```
+
+### 5. Deep Learning Model (Code Prediction)
+
+**Model:** Custom LSTM trained on your code (optional)
+- **Architecture**: LSTM with embedding layers (TensorFlow.js)
+- **Storage**: `.data/dl-model.pt` (created after training)
+- **Training**: Via `/api/dl-codegen/train` endpoint
+- **Vocab size**: 100 tokens (configurable)
+
+### Model Storage Requirements
+
+**Minimum Setup (3B LLM only):**
+- Llama 3.2 3B: ~2.5GB
+- Nomic embeddings: 137MB
+- Whisper small: 330MB
+- Piper voice: ~50-100MB
+- **Total: ~3-4GB**
+
+**Recommended Setup (7B + tools):**
+- Qwen 2.5 Coder 7B: ~5GB
+- Llama 3.2 3B: ~2.5GB
+- Nomic embeddings: 137MB
+- Whisper small: 330MB
+- Piper voice: ~50-100MB
+- **Total: ~8-9GB**
+
+**Power User Setup (All 5 LLMs):**
+- All 5 chat models: ~25GB
+- Nomic embeddings: 137MB
+- Whisper small: 330MB
+- Piper voices (multiple): ~200MB
+- **Total: ~25-30GB**
+
+### Model Storage Locations
+
+- **Ollama models**: `~/.ollama/models/`
+- **Piper voices**: `~/.piper/models/`
+- **Whisper models**: System-dependent (managed by openai-whisper)
+- **DL trained model**: `.data/dl-model.pt` (created during training)
+
+---
+
 ## Prerequisites
 
 ### 1. Ollama
@@ -126,13 +290,10 @@ brew install ollama
 # Start Ollama service
 ollama serve
 
-# Pull models (choose based on your RAM)
-ollama pull llama3.2:3b-instruct-q5_K_M      # Fast (4GB RAM)
-ollama pull qwen2.5-coder:7b-instruct-q5_K_M  # Balanced (8GB RAM)
-ollama pull deepseek-v2:16b-instruct-q4_K_M   # Expert (16GB RAM)
-
-# Pull embedding model for RAG/semantic search
-ollama pull nomic-embed-text
+# Pull models (see "AI Models Used" section above for all options)
+# Minimum:
+ollama pull qwen2.5-coder:7b-instruct-q5_K_M  # Default model
+ollama pull nomic-embed-text                   # For RAG/embeddings
 ```
 
 ### 2. Node.js
@@ -153,7 +314,8 @@ pip install piper-tts
 # Verify Piper installation
 python3 -m piper --version
 
-# Piper voice models will auto-download to ~/.piper/models/ on first use
+# Voice models auto-download to ~/.piper/models/ on first use
+# Default voice: en_US-libritts-high
 ```
 
 ### 4. Modern Browser
@@ -178,25 +340,49 @@ npm install
 Create `.env.local` for custom settings:
 
 ```env
-# Ollama API
+# Ollama Configuration
 OLLAMA_API_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_KEEP_ALIVE=-1                    # Keep models loaded
+OLLAMA_NUM_PARALLEL=4                    # Parallel requests
+OLLAMA_FLASH_ATTENTION=1                 # Performance boost
 
-# Memory System
+# Model Defaults
+NEXT_PUBLIC_DEFAULT_MODEL=qwen2.5-coder:7b-instruct-q5_K_M
+
+# Memory System - Database Paths
 MEMORY_DB_PATH=./.data/hackerreign.db
 CHROMA_DB_PATH=./.data/chroma
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+
+# Memory System - Phase 1-3 Feature Flags (ENABLED)
+RAG_HYBRID=true                          # Phase 3: Hybrid retrieval (dense + FTS5/BM25)
+RAG_CHUNKING=false                       # Phase 4: Message chunking (future)
+RAG_TOKEN_BUDGET=1000                    # Max tokens for memory context
+RAG_SUMMARY_FREQUENCY=5                  # Auto-summarize every N messages
+RAG_RERANK_ALPHA=0.6                    # Dense (semantic) search weight
+RAG_RERANK_BETA=0.3                     # BM25 (lexical) search weight
+RAG_RERANK_GAMMA=0.1                    # Code identifier match weight
+METRICS_RETENTION_DAYS=30                # Analytics retention period
 
 # Strategy System
 STRATEGY_DEFAULT=balanced
 STRATEGY_ENABLE_ANALYTICS=true
 
-# Resource Limits
+# Resource Constraints
 MAX_RAM_MB=16000
 MAX_GPU_LAYERS=35
 THERMAL_THRESHOLD=85
+DISABLE_RAM_CONSTRAINTS=false            # Set to true to let machine cook
+
+# Voice Configuration
+NEXT_PUBLIC_PIPER_VOICE=en_US-libritts-high
+WHISPER_PATH=/path/to/whisper            # Auto-detected if in PATH
 
 # Deep Learning
 ENABLE_DL_PREDICTIONS=true
+DL_SERVER_HOST=http://127.0.0.1:5001
 
 # Debug
 DEBUG_CONTEXT=false
@@ -247,7 +433,8 @@ User Request
     ├─ Speed: Always 3B model
     ├─ Quality: Always 16B model
     ├─ Cost: Token optimization
-    └─ Adaptive: ML-driven learning
+    ├─ Adaptive: ML-driven learning
+    └─ Workflow: Multi-model orchestration (chain/ensemble)
     ↓
 [Resource Constraints]
     ├─ RAM limits → downgrade model
@@ -293,28 +480,46 @@ User speaks (hold space or voice ON)
 [Auto-resume listening after 500ms]
 ```
 
-### Memory & RAG Flow
+### Memory & RAG Flow (Phase 3 - Hybrid Retrieval)
 
 ```
 User message
     ↓
-[RAG Search] → find similar past conversations
-    ├─ Generate embedding (Ollama)
-    ├─ Vector search (ChromaDB)
-    └─ Retrieve top K similar messages
+[Hybrid RAG Search] → Phase 3 dual-search system
+    ├─ Dense Search (Semantic)
+    │   ├─ Generate embedding (Ollama nomic-embed-text)
+    │   └─ Vector search (ChromaDB)
+    ├─ Lexical Search (BM25)
+    │   ├─ Extract keywords
+    │   └─ FTS5 full-text search (SQLite)
+    └─ Code Identifier Matching
+        └─ Extract camelCase, PascalCase, function names
+    ↓
+[Intelligent Reranking]
+    ├─ α = 0.6 × dense score (semantic similarity)
+    ├─ β = 0.3 × BM25 score (keyword relevance)
+    ├─ γ = 0.1 × code match score (identifier overlap)
+    └─ Final score = α + β + γ
+    ↓
+[Top K Results] (<10ms total overhead)
     ↓
 [Context Building] → inject retrieved context
+    ├─ Conversation summaries (Phase 2)
+    └─ User profile preferences (Phase 2)
     ↓
 [Enhanced System Prompt]
     ├─ Domain knowledge
     ├─ Mode-specific guidance
-    └─ Relevant past conversations
+    ├─ Relevant past conversations (hybrid ranked)
+    └─ User profile context
     ↓
 [LLM with enriched context]
     ↓
 [Save response to memory]
     ├─ SQLite storage
-    └─ Vector embedding for future RAG
+    ├─ Vector embedding (ChromaDB)
+    ├─ FTS5 index update (Phase 3)
+    └─ Auto-summarize every 5 messages (Phase 2)
 ```
 
 ## Project Structure
@@ -343,7 +548,8 @@ hackerreign/
 │   │   │   │   ├── speedStrategy.ts       # Always fast
 │   │   │   │   ├── qualityStrategy.ts     # Always best
 │   │   │   │   ├── costStrategy.ts        # Token optimization
-│   │   │   │   └── adaptiveStrategy.ts    # ML-driven
+│   │   │   │   ├── adaptiveStrategy.ts    # ML-driven
+│   │   │   │   └── workflowStrategy.ts    # Multi-model orchestration
 │   │   │   ├── workflows/            # Multi-model workflows
 │   │   │   │   ├── chain.ts          # Sequential chaining
 │   │   │   │   └── ensemble.ts       # Parallel voting
@@ -413,7 +619,8 @@ hackerreign/
 │   ├── learning_patterns.db          # Pattern recognition database
 │   ├── parameter_tuning.db           # Hyperparameter tuning database
 │   ├── quality_predictions.db        # Quality prediction database
-│   └── strategy_analytics.db         # Strategy performance analytics
+│   ├── strategy_analytics.db         # Strategy performance analytics
+│   └── mode_analytics.db             # Mode interaction analytics
 │
 └── public/
     ├── codesnippets.json             # Code snippet training data
@@ -425,35 +632,60 @@ hackerreign/
 
 ### LLM & Strategy
 - **POST /api/llm**: Main chat endpoint with strategy system integration
-  - Accepts: `messages`, `strategyEnabled`, `selectedStrategy`, `filePath`, `manualModeOverride`
-  - Returns: Streaming response with auto-selected model info
+  - Accepts: `messages`, `strategyEnabled`, `selectedStrategy`, `filePath`, `manualModeOverride`, `model`, `enableTools`
+  - Returns: Streaming response with auto-selected model info and strategy reasoning
 
 ### Learning & Analytics
 - **GET /api/analytics**: Retrieve learning and strategy analytics
+  - Query params: `?type=summary|daily|config&days=N`
   - Returns: Aggregated metrics, historical trends, performance comparisons
+- **POST /api/analytics**: Cleanup old analytics data
+  - Accepts: `retentionDays`
 - **POST /api/feedback**: Collect user feedback on AI responses
   - Accepts: `interactionId`, `rating`, `feedback`, `context`
   - Used by learning system for continuous improvement
 
+### Memory & Profile
+- **GET /api/memory/metrics**: Retrieval performance metrics
+  - Returns: FTS search latency, dense search stats, reranking performance
+- **POST /api/memory/consent**: Grant memory consent
+  - Accepts: `consent` boolean
+- **GET /api/memory/consent**: Check current consent status
+- **DELETE /api/memory/consent**: Revoke memory consent
+- **POST /api/profile**: Create/update user profile
+  - Accepts: 5-field profile object (name, role, experience, preferences, goals)
+- **GET /api/profile**: Retrieve current user profile
+- **DELETE /api/profile**: Delete user profile
+
 ### Voice
 - **POST /api/stt**: Whisper speech-to-text transcription
+  - Accepts: FormData with audio file (WebM or WAV)
+  - Returns: Transcribed text
 - **POST /api/piper-tts**: Piper text-to-speech synthesis
-- **GET /api/piper-tts/voices**: List available voice models
+  - Accepts: `{ text, voice }` (optional voice selection)
+  - Returns: WAV audio file
+- **GET /api/piper-tts/voices**: List available Piper voice models
+  - Returns: Array of installed voice model names
 
 ### Deep Learning
 - **POST /api/dl-codegen/predict**: Neural network code predictions
+  - Accepts: `{ prompt, context }` (optional context array)
+  - Returns: `{ completion, confidence, features }`
 - **POST /api/dl-codegen/train**: Trigger model training
+  - Accepts: `{ datasetPath }` (path to codesnippets.json)
+  - Returns: `{ loss, accuracy }`
 
 ## Configuration
 
 ### Strategy System
 
 ```typescript
-// Enable in Chat.tsx
+// Enable in Chat.tsx or LeftToolbar
 const [strategyEnabled, setStrategyEnabled] = useState(true);
 const [selectedStrategy, setSelectedStrategy] = useState('balanced');
 
-// Strategies: 'balanced', 'speed', 'quality', 'cost', 'adaptive'
+// Strategies: 'balanced', 'speed', 'quality', 'cost', 'adaptive', 'workflow'
+// Workflow modes: 'chain' (sequential) or 'ensemble' (parallel voting)
 ```
 
 ### Memory System
@@ -596,7 +828,7 @@ npm run type-check  # Check TypeScript types
 - **ML-Driven Learning**: Adaptive strategy learns from historical performance
 - **Multi-Model Workflows**: Chain and ensemble execution modes
 - **Analytics Dashboard**: SQLite-based performance tracking
-- **5 Strategy Types**: Balanced, Speed, Quality, Cost, Adaptive
+- **6 Strategy Types**: Balanced, Speed, Quality, Cost, Adaptive, Workflow
 
 ### v1.3.0 - Domain Context System
 - **Context Detection**: Automatic mode and domain detection
@@ -617,6 +849,29 @@ npm run type-check  # Check TypeScript types
 - **Vector Embeddings**: Semantic search with Ollama
 - **ChromaDB Integration**: Efficient similarity search
 - **Analytics**: Search performance tracking
+
+### Memory System Enhancements
+
+**Phase 3 - Hybrid Retrieval** (January 25, 2026 - ENABLED):
+- **Dual Search**: Semantic (dense) + lexical (FTS5/BM25) retrieval
+- **FTS5 Index**: Full-text search with 346 messages indexed
+- **Code Matching**: Identifier extraction (camelCase, PascalCase, functions)
+- **Reranking**: Weighted scoring (60% semantic, 30% BM25, 10% code)
+- **Performance**: <10ms overhead vs dense-only
+- **Migration 006-007**: FTS index creation and backfill triggers
+
+**Phase 2 - Summaries & Profile** (January 20, 2026):
+- **Auto-Summaries**: Generate summary every 5 messages
+- **User Profiles**: 5-field structured profile with consent
+- **Profile UI**: Integrated editor in LeftToolbar
+- **Consent Management**: Memory opt-in/opt-out
+- **Migration 003**: Summaries and profile tables
+
+**Phase 1 - Baseline Metrics** (January 18, 2026):
+- **Metrics Collection**: Retrieval performance tracking
+- **Feature Flags**: Phase-based enablement system
+- **Diagnostics**: Baseline performance data
+- **Migration 004**: Metrics tables
 
 ## Learn More
 

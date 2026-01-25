@@ -69,7 +69,8 @@ hackerreign/
 │   │   │   │   ├── qualityStrategy.ts    # High-quality outputs (larger models)
 │   │   │   │   ├── costStrategy.ts       # Cost-optimized (efficient models)
 │   │   │   │   ├── complexityStrategy.ts # Task complexity-based selection
-│   │   │   │   └── adaptiveStrategy.ts   # Learning-based adaptation
+│   │   │   │   ├── adaptiveStrategy.ts   # Learning-based adaptation
+│   │   │   │   └── workflowStrategy.ts   # Multi-model orchestration (chain/ensemble)
 │   │   │   ├── workflows/        # Multi-model workflow patterns
 │   │   │   │   ├── chain.ts      # Sequential model chaining
 │   │   │   │   └── ensemble.ts   # Parallel ensemble voting
@@ -121,7 +122,8 @@ hackerreign/
 │   ├── learning_patterns.db      # Pattern recognition database
 │   ├── parameter_tuning.db       # Hyperparameter tuning database
 │   ├── quality_predictions.db    # Quality prediction database
-│   └── strategy_analytics.db     # Strategy performance analytics database
+│   ├── strategy_analytics.db     # Strategy performance analytics database
+│   └── mode_analytics.db         # Mode interaction analytics database
 │
 ├── public/                       # Static assets
 │   ├── codesnippets.json         # Code snippet library
@@ -273,6 +275,7 @@ LLM strategy selection and multi-model orchestration system:
 - **costStrategy.ts** - Minimizes computational cost and resource usage
 - **complexityStrategy.ts** - Selects models based on task complexity analysis
 - **adaptiveStrategy.ts** - Learns from past performance to improve selection over time
+- **workflowStrategy.ts** - Multi-model orchestration with chain (sequential) or ensemble (parallel voting) modes
 
 **Workflow Patterns** (`workflows/`):
 - **chain.ts** - Sequential model chaining (e.g., draft → refine → polish)

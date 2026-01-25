@@ -69,7 +69,8 @@ app/lib/strategy/
 │   ├── speedStrategy.ts          # Always fast models
 │   ├── qualityStrategy.ts        # Always best models
 │   ├── costStrategy.ts           # Token optimization
-│   └── adaptiveStrategy.ts       # ML-driven (learns from history)
+│   ├── adaptiveStrategy.ts       # ML-driven (learns from history)
+│   └── workflowStrategy.ts       # Multi-model orchestration (chain/ensemble)
 │
 ├── workflows/
 │   ├── chain.ts                  # Multi-model chaining (draft→refine→review)
@@ -147,6 +148,37 @@ const decision = await strategyManager.executeStrategy('adaptive', context);
 // → Adjusts based on user feedback
 // → Confidence-based fallbacks
 ```
+
+#### Workflow Strategy (Multi-Model Orchestration)
+
+Orchestrates multiple models in chain or ensemble modes:
+
+**Chain Mode** - Sequential processing:
+```typescript
+const decision = await strategyManager.executeStrategy('workflow', context, {
+  workflowMode: 'chain'
+});
+// → Step 1: llama3.2:3b (draft)
+// → Step 2: qwen2.5-coder:7b (refine)
+// → Step 3: deepseek-coder-v2:16b (review/polish)
+// → Returns polished final output
+```
+
+**Ensemble Mode** - Parallel voting:
+```typescript
+const decision = await strategyManager.executeStrategy('workflow', context, {
+  workflowMode: 'ensemble'
+});
+// → Runs 3 models in parallel:
+//   - llama3.2:3b (weight: 0.3)
+//   - qwen2.5-coder:7b (weight: 0.5)
+//   - deepseek-coder-v2:16b (weight: 0.8)
+// → Combines outputs via weighted voting/consensus
+```
+
+**Use Cases:**
+- **Chain**: Complex tasks needing refinement (architecture design, long documentation)
+- **Ensemble**: Critical decisions needing consensus (code review, security analysis)
 
 ### 2. Complexity Detection
 

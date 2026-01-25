@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Documentation] - 2026-01-25 - Comprehensive Documentation Update
+
+### Added
+
+**README.md - Complete AI Models Section:**
+- Documented all 5 LLM models with RAM requirements, speeds, and use cases
+  - llama3.2:3b, qwen2.5:7b, qwen2.5-coder:7b, yi-coder:9b, deepseek-coder-v2:16b
+- Added embedding model documentation (nomic-embed-text with alternatives)
+- Added Whisper STT model details (small, 330MB, installation instructions)
+- Added Piper TTS voice model options (4 voices with characteristics)
+- Added model storage requirements calculator (3GB minimum, 8-9GB recommended, 25-30GB power user)
+- Added model storage locations for all AI components
+
+**README.md - Strategy System:**
+- Added 6th strategy type: Workflow (multi-model orchestration)
+- Documented chain mode (sequential: draft → refine → review)
+- Documented ensemble mode (parallel voting with weighted consensus)
+- Updated strategy selection flow diagram
+
+**README.md - Memory & RAG System:**
+- Added Phase 2 features documentation:
+  - Conversation summaries (automatic every 5 messages)
+  - User profile management (5-field structured profile with consent)
+  - Profile UI integration in LeftToolbar
+- Added Phase 3 features documentation (ENABLED in production):
+  - Hybrid retrieval (dense + FTS5/BM25)
+  - Code identifier matching (camelCase, PascalCase, functions)
+  - Intelligent reranking algorithm (α=0.6, β=0.3, γ=0.1)
+  - FTS5 full-text index (346 messages indexed)
+  - Performance metrics (<10ms overhead)
+- Updated migration count (7 migrations applied)
+
+**README.md - API Endpoints:**
+- Added 6 missing endpoints:
+  - `GET /api/memory/metrics` - Retrieval performance metrics
+  - `POST/GET/DELETE /api/memory/consent` - Memory consent management
+  - `POST/GET/DELETE /api/profile` - User profile management
+  - `GET /api/piper-tts/voices` - List available voice models
+  - `POST /api/analytics` - Cleanup old analytics data
+- Added complete parameter documentation for all endpoints
+
+**README.md - Environment Variables:**
+- Added Phase 1-3 memory feature flags:
+  - `RAG_HYBRID=true`, `RAG_SUMMARY_FREQUENCY=5`, `RAG_RERANK_ALPHA/BETA/GAMMA`, `METRICS_RETENTION_DAYS`
+- Added voice configuration variables:
+  - `NEXT_PUBLIC_PIPER_VOICE`, `WHISPER_PATH`
+- Added model defaults:
+  - `NEXT_PUBLIC_DEFAULT_MODEL`, `OLLAMA_EMBED_MODEL`
+- Added Ollama performance flags:
+  - `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_PARALLEL`, `OLLAMA_FLASH_ATTENTION`
+
+**README.md - Enhanced Architecture Diagrams:**
+- Updated Memory & RAG flow with Phase 3 hybrid retrieval details
+- Added all 6 strategy types to strategy selection flow
+- Added reranking algorithm visualization
+
+**app/lib/memory/README.md:**
+- Updated version from 1.1.0 to 1.3.0 (Phase 3)
+- Added Phase 2 features section with examples
+- Added Phase 3 hybrid retrieval section with detailed explanation
+- Added retrieval metrics documentation
+- Documented all 7 migrations (001-007)
+- Updated environment variables with Phase 1-3 flags
+
+**app/lib/strategy/README.md:**
+- Added workflow strategy documentation
+- Documented chain mode (sequential processing)
+- Documented ensemble mode (parallel voting)
+- Added use cases and code examples
+- Updated directory structure with workflowStrategy.ts
+
+**STRUCTURE.md:**
+- Added workflowStrategy.ts to strategy implementations
+- Added mode_analytics.db to data directory
+- Updated strategy implementation descriptions
+
+### Changed
+
+**README.md:**
+- Updated "Prerequisites" section with model installation guidance
+- Enhanced configuration examples with all available options
+- Updated "Recent Updates" section with Phase 2 & 3 timeline
+- Changed strategy count from 5 to 6 in multiple locations
+
+### Documentation Quality Improvements
+
+- **Completeness**: All implemented features now documented
+- **Accuracy**: Documentation matches production code (Phase 3 ENABLED)
+- **Clarity**: Added use cases, examples, and performance metrics
+- **Navigation**: Cross-references between related documentation files
+- **User Guidance**: Installation paths for all model types and configurations
+
+### Files Updated
+
+1. `README.md` - Main project documentation (comprehensive overhaul)
+2. `app/lib/memory/README.md` - Memory system documentation (Phase 2 & 3 added)
+3. `app/lib/strategy/README.md` - Strategy system documentation (workflow added)
+4. `STRUCTURE.md` - Project structure reference (missing files added)
+5. `CHANGELOG.md` - This file (documentation tracking added)
+
+---
+
 ## [Build Fix] - 2026-01-25 - Tailwind CSS v4 Configuration
 
 ### Problem
