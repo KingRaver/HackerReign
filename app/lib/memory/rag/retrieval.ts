@@ -462,4 +462,100 @@ export class ChromaRetrieval {
       throw error;
     }
   }
+
+  /**
+   * FTS (Full-Text Search) lexical search
+   * Phase 3: Hybrid Retrieval
+   * Uses SQLite FTS5 for keyword/code identifier matching
+   */
+  async ftsSearch(
+    query: string,
+    conversationId?: string,
+    limit: number = 10
+  ): Promise<RetrievalResult[]> {
+    try {
+      const storage = getStorage();
+      const db = storage.getDatabase();
+
+      // Build FTS query - escape special characters
+      const ftsQuery = query
+        .replace(/[^\w\s]/g, ' ')  // Remove special chars
+        .trim()
+        .split(/\s+/)               // Split on whitespace
+        .filter(term => term.length > 2)  // Filter short terms
+        .join(' OR ');              // Join with OR for broader matching
+
+      if (!ftsQuery) {
+        console.log('[ChromaRetrieval] FTS query too short, returning empty results');
+        return [];
+      }
+
+      // Build SQL query
+      let sql = `
+        SELECT
+          f.message_id,
+          f.conversation_id,
+          f.content,
+          f.role,
+          bm25(f) as bm25_score
+        FROM messages_fts f
+        WHERE f.content MATCH ?
+      `;
+
+      const params: any[] = [ftsQuery];
+
+      // Filter by conversation if provided
+      if (conversationId) {
+        sql += ` AND f.conversation_id = ?`;
+        params.push(conversationId);
+      }
+
+      sql += `
+        ORDER BY bm25_score DESC
+        LIMIT ?
+      `;
+      params.push(limit);
+
+      const stmt = db.prepare(sql);
+      const rows = stmt.all(...params) as Array<{
+        message_id: string;
+        conversation_id: string;
+        content: string;
+        role: string;
+        bm25_score: number;
+      }>;
+
+      // Transform to RetrievalResult format
+      const results: RetrievalResult[] = [];
+
+      for (const row of rows) {
+        // Fetch full message from database
+        const fullMessage = storage.getMessage(row.message_id);
+
+        if (fullMessage) {
+          // Normalize BM25 score to 0-1 range (BM25 is unbounded, use sigmoid-like normalization)
+          // Typical BM25 scores range from 0-20, with higher being better
+          const normalizedScore = Math.min(1, Math.max(0, row.bm25_score / 20));
+
+          results.push({
+            message: fullMessage,
+            similarity_score: normalizedScore,
+            conversation_summary: row.conversation_id,
+            content_type: 'message',
+            fts_score: row.bm25_score,  // Keep raw score for debugging
+          });
+        }
+      }
+
+      console.log(
+        `[ChromaRetrieval] FTS search found ${results.length} results for query: "${ftsQuery}"`
+      );
+
+      return results;
+    } catch (error) {
+      console.error('[ChromaRetrieval] FTS search error:', error);
+      // Graceful fallback - return empty results if FTS unavailable
+      return [];
+    }
+  }
 }

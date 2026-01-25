@@ -958,6 +958,14 @@ export class SQLiteStorage {
   }
 
   /**
+   * UTILITY: Get direct database access for advanced queries
+   * Phase 3: Used for FTS queries
+   */
+  getDatabase(): Database.Database {
+    return this.db;
+  }
+
+  /**
    * UTILITY: Generate unique IDs
    */
   private generateId(prefix: string): string {

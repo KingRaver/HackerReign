@@ -116,6 +116,7 @@ export interface RetrievalResult {
   similarity_score: number;
   conversation_summary?: string;
   content_type?: 'message' | 'conversation_summary' | 'user_profile';
+  fts_score?: number;  // Phase 3: BM25 score from FTS search
 }
 
 /**

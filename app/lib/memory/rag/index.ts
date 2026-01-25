@@ -7,6 +7,7 @@ import { Message, AugmentedPrompt, RetrievalResult } from '../schemas';
 import { getStorage } from '../storage';
 import { logRetrievalMetrics, RetrievalMetrics } from '../metrics';
 import { getMemoryConfig } from '../config';
+import { deduplicateAndRerank } from './rerank';
 
 /**
  * RAG Manager
@@ -143,6 +144,9 @@ export class RAGManager {
     // Track timing for each source
     let denseStartTime = 0;
     let denseMs = 0;
+    let ftsMs = 0;
+    let rerankStartTime = 0;
+    let rerankMs = 0;
 
     try {
       console.log(
@@ -152,24 +156,67 @@ export class RAGManager {
       let results: RetrievalResult[] = [];
       let conversationResults: RetrievalResult[] = [];
       let globalResults: RetrievalResult[] = [];
+      let ftsResults: RetrievalResult[] = [];
 
-      // Conversation-scoped dense retrieval
-      denseStartTime = Date.now();
-      if (conversationId) {
-        conversationResults = await this.retrieveWithFilters(
-          query,
-          { conversation_id: conversationId },
-          topK
+      // Phase 3: Hybrid Retrieval (Dense + FTS)
+      if (config.ragHybrid) {
+        console.log('[RAGManager] Using hybrid retrieval (dense + FTS)');
+
+        // Run dense and FTS searches in parallel
+        denseStartTime = Date.now();
+        const ftsStartTime = Date.now();
+
+        const [denseConvResults, ftsConvResults] = await Promise.all([
+          // Dense retrieval (semantic)
+          conversationId
+            ? this.retrieveWithFilters(
+                query,
+                { conversation_id: conversationId },
+                topK ? topK * 2 : 10  // Over-fetch for reranking
+              )
+            : Promise.resolve([]),
+          // FTS retrieval (lexical)
+          this.retrieval.ftsSearch(query, conversationId, topK ? topK * 2 : 10),
+        ]);
+
+        denseMs = Date.now() - denseStartTime;
+        ftsMs = Date.now() - ftsStartTime;
+
+        conversationResults = denseConvResults;
+        ftsResults = ftsConvResults;
+
+        // Rerank combined results
+        rerankStartTime = Date.now();
+        results = deduplicateAndRerank(conversationResults, ftsResults, query);
+        rerankMs = Date.now() - rerankStartTime;
+
+        // Limit to topK after reranking
+        if (topK) {
+          results = results.slice(0, topK);
+        }
+
+        console.log(
+          `[RAGManager] Hybrid retrieval: ${conversationResults.length} dense + ${ftsResults.length} FTS → ${results.length} reranked (dense: ${denseMs}ms, FTS: ${ftsMs}ms, rerank: ${rerankMs}ms)`
         );
-        results = conversationResults;
-      }
+      } else {
+        // Phase 1-2: Dense-only retrieval (original behavior)
+        denseStartTime = Date.now();
+        if (conversationId) {
+          conversationResults = await this.retrieveWithFilters(
+            query,
+            { conversation_id: conversationId },
+            topK
+          );
+          results = conversationResults;
+        }
 
-      // Global fallback if conversation results are insufficient
-      if (results.length === 0) {
-        globalResults = await this.retrieval.search(query, topK);
-        results = globalResults;
+        // Global fallback if conversation results are insufficient
+        if (results.length === 0) {
+          globalResults = await this.retrieval.search(query, topK);
+          results = globalResults;
+        }
+        denseMs = Date.now() - denseStartTime;
       }
-      denseMs = Date.now() - denseStartTime;
 
       // Summary retrieval
       let summaryResults: RetrievalResult[] = [];
@@ -209,13 +256,13 @@ export class RAGManager {
           globalDense: globalResults.length,
           summaries: summaryResults.length,
           profile: profileResults.length,
-          ftsLexical: 0, // Phase 3: will be populated when hybrid is enabled
+          ftsLexical: ftsResults.length,  // Phase 3: FTS result count
         },
         latency: {
           totalMs,
           denseMs,
-          ftsMs: 0,      // Phase 3: will be populated when hybrid is enabled
-          rerankMs: 0,   // Phase 3: will be populated when hybrid is enabled
+          ftsMs,      // Phase 3: FTS search latency
+          rerankMs,   // Phase 3: Reranking latency
         },
         topSimilarities,
         flags: {
